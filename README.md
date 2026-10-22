@@ -114,6 +114,9 @@ order:
 **Android** boots from the device's own boot partitions, the same way as
 with Qualcomm's ABL, including verified boot and recovery.
 
+The menu offers English and Korean. Select 한국어 in the Language setting.
+Korean replaces Simplified Chinese and keeps its stored language value.
+
 ## Building
 
 Requires git and Docker. The build runs in an amd64 container, so on Apple
@@ -135,7 +138,6 @@ it.
 
 | Option | |
 |---|---|
-| `--lang zh-hans` | Simplified Chinese menu |
 | `--no-standard-boot` | Leave out standard boot (Linux then boots only from boot images) |
 | `--debug` | Debug build, with a Debug section in the menu |
 | `--clean` | Build each chipset from scratch |
@@ -152,6 +154,15 @@ clang and lld-link, fetch the sources with `Scripts/fetch.sh` and run make.
 
 ```bash
 make FEATURES=standard-boot,card-logo
+```
+
+To preview the Korean menu without flashing a device:
+
+```bash
+Scripts/fetch.sh microui
+make sim
+mkdir -p build/screens-ko
+build/sim/openabl-menu-sim --lang ko --out build/screens-ko
 ```
 
 GitHub Actions (`.github/workflows/build.yml`) builds every chipset when a

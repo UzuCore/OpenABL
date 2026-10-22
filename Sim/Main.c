@@ -6,7 +6,7 @@
 /**
   Main - renders the menu's screens to PNG on the host.
 
-    openabl-menu-sim [--out DIR] [--filter TEXT] [--lang en|zh-hans] [--check]
+    openabl-menu-sim [--out DIR] [--filter TEXT] [--lang en|ko] [--check]
 
   For every panel and rotation it writes the main menu as the user sees it
   (*-view.png) and as the panel receives it (*-scanout.png, rotated). A few
@@ -984,14 +984,14 @@ main (
       Filter = Argv[++Index];
     } else if (!strcmp (Argv[Index], "--lang") && Index + 1 < Argc &&
                (!strcmp (Argv[Index + 1], "en") ||
-                !strcmp (Argv[Index + 1], "zh-hans"))) {
-      mLanguage = strcmp (Argv[++Index], "en") ? LANG_ZH_HANS : LANG_EN;
+                !strcmp (Argv[Index + 1], "ko"))) {
+      mLanguage = strcmp (Argv[++Index], "en") ? LANG_KO : LANG_EN;
     } else if (!strcmp (Argv[Index], "--check")) {
       DoCheck = TRUE;
     } else {
       fprintf (
         stderr,
-        "usage: %s [--out DIR] [--filter TEXT] [--lang en|zh-hans] [--check]\n",
+        "usage: %s [--out DIR] [--filter TEXT] [--lang en|ko] [--check]\n",
         Argv[0]
       );
       return 2;
