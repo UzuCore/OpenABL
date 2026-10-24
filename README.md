@@ -90,6 +90,9 @@ fastboot flash abl_b abl_signed-SM8550.elf
 
 - 커널은 EFI 스텁을 통해 실행합니다. gzip으로 압축된 커널은 먼저 압축을 풉니다.
   initrd와 함께 부팅 항목 또는 선택한 기기 모델의 장치 트리를 전달합니다.
+- OS를 시작하기 전에 XBL이 더 이상 사용하지 않는 메모리를 OS에 반환합니다.
+  SoC의 전용 예약 영역을 제외한 DRAM, XBL의 미사용 영역, `UEFI_FD`와 `FV_Region`의
+  일반 예약 영역, 화면에 표시 중인 프레임버퍼를 제외한 디스플레이 영역이 대상입니다.
 - 부팅 횟수 계산(`name+3.conf`)은
   [Automatic Boot Assessment](https://systemd.io/AUTOMATIC_BOOT_ASSESSMENT/)를 따르며,
   [Boot Loader Interface](https://systemd.io/BOOT_LOADER_INTERFACE/) 변수도 설정합니다.
@@ -100,6 +103,11 @@ fastboot flash abl_b abl_signed-SM8550.elf
   ABL 버전을 확인할 수 있습니다(major << 16 | minor).
 - `EFI_RT_PROPERTIES_TABLE`로 XBL이 제공하지 않는 런타임 서비스를 Linux에 알립니다.
   SDM845는 `SetVirtualAddressMap`을, SM6115는 모든 런타임 서비스를 제공하지 않습니다.
+- 커널의 장치 트리에 `splash_region` 또는 `cont_splash_region`이 있으면 Qualcomm ABL이
+  Android에 적용하는 방식처럼 해당 영역을 XBL의 프레임버퍼로 지정하여 부팅 화면을 유지합니다.
+  해당 영역이 없으면 Linux를 시작하기 전에 화면을 끄고, Linux가 화면을 새로 초기화합니다.
+  `EFI_DT_FIXUP_PROTOCOL`을 호출하는 로더(systemd-boot, GRUB 2.12 이상)에도
+  로더가 불러온 장치 트리에 같은 처리를 적용합니다.
 - 부팅 위치는 내부 저장소(UFS 또는 eMMC), SD 카드, USB 드라이브입니다.
   USB를 사용할 때는 포트를 호스트 모드로 전환합니다.
 - `userdata`에 기록한 디스크 이미지도 부팅할 수 있으며, 이미지의 ESP를 자동으로 찾습니다.
