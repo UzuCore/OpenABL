@@ -10,6 +10,7 @@
   are Back, and Enter, Space and SCAN_SUSPEND (the power key on Qualcomm
   keypads) are Select. Other keys are ignored. Repeat and hold timing is
   left to the UI's key decoder (Ui/Ui.h).
+  Up and Down are reversed when the displayed rotation is 180 or 270.
 */
 
 #ifndef __EFI_INPUT_H__
@@ -21,7 +22,8 @@
 #include "Ui/Ui.h"
 
 typedef struct _INPUT_KEYS {
-  KEYS Decoder;
+  KEYS   Decoder;
+  UINT16 Rotation; // displayed rotation; 180 and 270 reverse Up/Down
 } INPUT_KEYS;
 
 typedef struct _INPUT_EVENTS OABL_VEC (INPUT) INPUT_EVENTS;

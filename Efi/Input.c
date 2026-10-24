@@ -81,6 +81,13 @@ InputKeysPoll (
 
   while (ReadKey (&Key)) {
     Any = TRUE;
+    if (Keys->Rotation == 180 || Keys->Rotation == 270) {
+      if (Key == INPUT_UP) {
+        Key = INPUT_DOWN;
+      } else if (Key == INPUT_DOWN) {
+        Key = INPUT_UP;
+      }
+    }
     // The input is lost if memory runs out.
     if (KeysPress (&Keys->Decoder, Key, Now, &Decoded)) {
       (VOID)VecPush (Out, Decoded);
