@@ -66,6 +66,7 @@ typedef struct _SETTINGS {
   BOOLEAN CustomLogo;
   // The menu's language, a LANG_ID from Ui/Lang.h.
   UINT8 Language;
+  BOOLEAN ReverseVolume;
 } SETTINGS;
 
 // Languages the menu offers (LANG_COUNT).
@@ -98,6 +99,7 @@ extern CONST UINT8 gSettingsTimeoutChoices[4];
 #define SETTINGS_KEY_DISPLAY_QUIESCE "DisplayQuiesce"
 #define SETTINGS_KEY_CUSTOM_LOGO     "CustomLogo"
 #define SETTINGS_KEY_LANGUAGE        "MenuLanguage"
+#define SETTINGS_KEY_REVERSE_VOLUME  "ReverseVolume"
 // Experimental, and no menu sets it yet: 1 starts USB host in the same
 // boot as fastboot instead of restarting. On the glink SoCs XBL died when a
 // drive was attached after the gadget had run.
@@ -158,7 +160,7 @@ typedef struct _SETTINGS_VAR {
   UINTN        Len;
 } SETTINGS_VAR;
 
-#define SETTINGS_VARS 12
+#define SETTINGS_VARS 13
 
 // Converts the settings to variables. Returns the count, SETTINGS_VARS.
 UINTN

@@ -220,6 +220,7 @@ SettingsToVars (
   PutLe16 (&Out[Count++], SETTINGS_KEY_MODEL_ROTATION, Settings->ModelRotation);
   PutU8 (&Out[Count++], SETTINGS_KEY_CUSTOM_LOGO, Settings->CustomLogo);
   PutU8 (&Out[Count++], SETTINGS_KEY_LANGUAGE, Settings->Language);
+  PutU8 (&Out[Count++], SETTINGS_KEY_REVERSE_VOLUME, Settings->ReverseVolume);
   return Count;
 }
 
@@ -398,6 +399,9 @@ SettingsFromVars (
   if (Byte (Get, Context, SETTINGS_KEY_LANGUAGE, &Byte8) &&
       Byte8 < SETTINGS_LANGUAGES) {
     Settings.Language = Byte8;
+  }
+  if (Byte (Get, Context, SETTINGS_KEY_REVERSE_VOLUME, &Byte8) && Byte8 <= 1) {
+    Settings.ReverseVolume = Byte8 == 1;
   }
   *Out = Settings;
 }

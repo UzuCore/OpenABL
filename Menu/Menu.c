@@ -282,6 +282,7 @@ MenuSavePrefs (IN CONST SETTINGS *Settings)
   WriteLe16 (Bytes, Settings->ModelRotation);
   VarSet (SETTINGS_KEY_MODEL_ROTATION, Bytes, 2);
   VarSet (SETTINGS_KEY_LANGUAGE, &Settings->Language, 1);
+  VarSet (SETTINGS_KEY_REVERSE_VOLUME, &Settings->ReverseVolume, 1);
   MenuFlush ();
 }
 
@@ -409,6 +410,7 @@ MenuNew (
     &M->Stored.Language
   );
   LangSet (M->Stored.Language);
+  M->Stored.ReverseVolume = MenuVarIs (SETTINGS_KEY_REVERSE_VOLUME, 1);
   Version = MenuHostText (State.Version, sizeof (State.Version));
   AsciiStrCopy (M->AblVersion, sizeof (M->AblVersion), Version ? Version : "");
   FreePool (Version);
@@ -440,6 +442,7 @@ Refresh (IN OUT MENU_STATE *M)
                          : ROTATION_NONE;
   Base.Rotation      = M->Stored.Rotation;
   Base.Language      = M->Stored.Language;
+  Base.ReverseVolume = M->Stored.ReverseVolume;
   M->Stored          = Base;
   return EFI_SUCCESS;
 }
@@ -513,6 +516,7 @@ Save (
   AsciiStrCopy (M->Stored.Model, sizeof (M->Stored.Model), Want->Model);
   M->Stored.ModelRotation = Want->ModelRotation;
   M->Stored.Language      = Want->Language;
+  M->Stored.ReverseVolume = Want->ReverseVolume;
   MenuSavePrefs (Want);
   if (EFI_ERROR (Refresh (M))) {
     return gStrings->AblNotAnswering;
@@ -1642,7 +1646,7 @@ MenuRun (
     INPUT_EVENTS Events = {0};
     UINT16       Want;
 
-    Keys.Rotation = Rotation;
+    Keys.ReverseVolume = mApp.Settings.ReverseVolume;
     InputKeysPoll (&Keys, Now, &Events);
     // Once an uninstall waits to restart into recovery, keys and timers do
     // nothing, so its settings can't be changed back before the wipe.
