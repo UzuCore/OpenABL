@@ -82,7 +82,7 @@ MenuVarIs (
   IN UINT8        Value
 );
 
-// Commits written variables to flash (XBL's FlushVariableNV).
+// Writes the changed settings to misc, logging a failure.
 VOID
 MenuFlush (VOID);
 
@@ -90,18 +90,11 @@ MenuFlush (VOID);
 SETTINGS_CAPS
 MenuCapsOf (IN CONST MENU_HOST_STATE *State);
 
-// Reads the settings from their variables, if they have been moved there.
-BOOLEAN
+// Reads the stored settings. Defaults fill in bad or missing ones.
+VOID
 MenuStoredSettings (
   IN CONST MENU_HOST_STATE *State,
   IN CONST SETTINGS_CAPS   *Caps,
-  OUT SETTINGS             *Out
-);
-
-// Fills Out with the settings from the ABL's state.
-VOID
-MenuSettingsOf (
-  IN CONST MENU_HOST_STATE *State,
   OUT SETTINGS             *Out
 );
 
@@ -154,7 +147,6 @@ MenuLiveUsbHostDown (IN CONST MENU_HOST *Host);
 // drive's device path length (Le16), the path, then the entry's id. Start
 // takes it and clears it.
 #define MENU_PICK_VAR          "BootEntryOnce"
-#define MENU_PICK_BOOT_IMAGE   "openabl-boot-image"
 #define MENU_PICK_DEFAULT_FILE "openabl-default-file"
 
 // What booting needs from the ABL's state and the settings.

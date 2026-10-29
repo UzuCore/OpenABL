@@ -25,7 +25,6 @@ STATIC CONST LANG_STRINGS mEn = {
   .StartLinux        = "Start Linux",
   .StartAndroid      = "Start Android",
   .BootEntries       = "Boot entries",
-  .BootImage         = "Boot image",
   .DefaultFile       = "EFI loader",
   .RestartBootloader = "Restart bootloader",
   .RecoveryMode      = "Recovery mode",
@@ -112,8 +111,6 @@ STATIC CONST LANG_STRINGS mEn = {
   .ErrLoadTitle    = "Couldn't start Linux",
   .ErrLoadHint =
     "Check the boot files on the drive, or change Boot source in the menu.",
-  .ErrBootImageFailed =
-    "The boot image didn't pass verification, or didn't start.",
   .ErrAndroidTitle       = "Android boot isn't available",
   .ErrAndroidMsg         = "This build can't start Android on this device yet.",
   .ErrAndroidHint        = "Set Boot mode to Linux in the menu.",
@@ -121,11 +118,7 @@ STATIC CONST LANG_STRINGS mEn = {
   .ErrAndroidFailedMsg   = "Android's boot images didn't start.",
   .ErrAndroidFailedHint  = "The Log screen says why. Check the Android "
                           "partitions, or set Boot mode to Linux.",
-  .ErrModelTitle = "Device model isn't set",
-  .ErrModelMsg =
-    "Linux needs your device model to choose the right device tree.",
   .PressAnyKeyMenu       = "Press any key to return to the menu",
-  .PressAnyKeyModel      = "Press any key to choose your model",
   .ConfirmUninstallTitle = "Uninstall CFW?",
   .ConfirmUninstallMsg   = "Erases these partitions, and all of Android's "
                            "data with them:",
@@ -183,7 +176,6 @@ STATIC CONST LANG_STRINGS mKo = {
   .StartLinux                = "Linux 시작",
   .StartAndroid              = "Android 시작",
   .BootEntries               = "부팅 항목",
-  .BootImage                 = "부팅 이미지",
   .DefaultFile               = "EFI 로더",
   .RestartBootloader         = "부트로더로 재시작",
   .RecoveryMode              = "복구 모드",
@@ -277,8 +269,6 @@ STATIC CONST LANG_STRINGS mKo = {
   .ErrLoadHint =
     "드라이브의 부팅 파일을 확인하거나 메뉴에서 부팅 위치를 "
     "변경하세요.",
-  .ErrBootImageFailed =
-    "부팅 이미지 검증에 실패했거나 시작하지 못했습니다.",
   .ErrAndroidTitle           = "Android 부팅을 사용할 수 없음",
   .ErrAndroidMsg =
     "이 빌드는 아직 이 기기의 Android 부팅을 지원하지 않습니다.",
@@ -288,11 +278,7 @@ STATIC CONST LANG_STRINGS mKo = {
   .ErrAndroidFailedHint =
     "로그 화면에서 원인을 확인하세요. Android 파티션을 확인하거나 "
     "부팅 모드를 Linux로 설정하세요.",
-  .ErrModelTitle             = "기기 모델이 설정되지 않음",
-  .ErrModelMsg =
-    "Linux가 올바른 장치 트리를 선택하려면 기기 모델이 필요합니다.",
   .PressAnyKeyMenu           = "아무 키나 누르면 메뉴로 돌아갑니다",
-  .PressAnyKeyModel          = "아무 키나 누르면 모델을 선택합니다",
   .ConfirmUninstallTitle     = "CFW를 제거할까요?",
   .ConfirmUninstallMsg =
     "다음 파티션과 Android의 모든 데이터가 삭제됩니다:",

@@ -60,12 +60,29 @@ ReadKey (OUT INPUT *Out)
   }
 }
 
+// Resets the input after a read. Qualcomm's keypad reports a press once;
+// after a reset it reports a key still down again, which is how a held key
+// is seen. Qualcomm's menu resets after each read for the same reason.
+STATIC VOID
+ResetKeys (VOID)
+{
+  (VOID)gST->ConIn->Reset (gST->ConIn, FALSE);
+}
+
 BOOLEAN
-InputKeysHeldAtStart (IN INPUT_KEYS *Keys)
+InputKeysHeldAtStart (
+  IN OUT INPUT_KEYS *Keys,
+  IN UINT64          Now
+)
 {
   INPUT Key;
 
-  return ReadKey (&Key);
+  if (!ReadKey (&Key)) {
+    return FALSE;
+  }
+  ResetKeys ();
+  KeysMute (&Keys->Decoder, Key, Now);
+  return TRUE;
 }
 
 VOID
@@ -81,19 +98,32 @@ InputKeysPoll (
 
   while (ReadKey (&Key)) {
     Any = TRUE;
-    if (Keys->ReverseVolume) {
-      if (Key == INPUT_UP) {
-        Key = INPUT_DOWN;
-      } else if (Key == INPUT_DOWN) {
-        Key = INPUT_UP;
-      }
-    }
     // The input is lost if memory runs out.
     if (KeysPress (&Keys->Decoder, Key, Now, &Decoded)) {
+      if (Keys->ReverseVolume) {
+        if (Decoded == INPUT_UP) {
+          Decoded = INPUT_DOWN;
+        } else if (Decoded == INPUT_DOWN) {
+          Decoded = INPUT_UP;
+        }
+      }
       (VOID)VecPush (Out, Decoded);
     }
   }
-  if (!Any) {
+  if (Any) {
+    ResetKeys ();
+  } else {
     KeysIdle (&Keys->Decoder, Now);
+  }
+}
+
+VOID
+InputKeysAfterBusy (
+  IN OUT INPUT_KEYS *Keys,
+  IN UINT64          Now
+)
+{
+  if (Keys->Decoder.Held) {
+    KeysMute (&Keys->Decoder, Keys->Decoder.Key, Now);
   }
 }

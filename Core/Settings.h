@@ -75,10 +75,6 @@ typedef struct _SETTINGS {
 // Menu timeout choices, in seconds.
 extern CONST UINT8 gSettingsTimeoutChoices[4];
 
-// Bump only when the meaning of an existing variable changes.
-#define SETTINGS_SCHEMA 1
-
-#define SETTINGS_KEY_SCHEMA           "SettingsSchema"
 #define SETTINGS_KEY_BOOT_MODE        "BootMode"
 #define SETTINGS_KEY_ABL_MODE         "AblMode"
 #define SETTINGS_KEY_ALT_VOLUME_UP    "AltVolumeUp"
@@ -160,7 +156,7 @@ typedef struct _SETTINGS_VAR {
   UINTN        Len;
 } SETTINGS_VAR;
 
-#define SETTINGS_VARS 13
+#define SETTINGS_VARS 12
 
 // Converts the settings to variables. Returns the count, SETTINGS_VARS.
 UINTN
@@ -183,14 +179,6 @@ SETTINGS_GET (
   IN VOID            *Context,
   IN CONST CHAR8     *Name,
   IN OUT OABL_BUFFER *Out
-);
-
-// Returns TRUE if the settings are in variables. Efi/Variables.c moves
-// them there from devinfo, which keeps them until that succeeds.
-BOOLEAN
-SettingsInVars (
-  IN SETTINGS_GET *Get,
-  IN VOID         *Context OPTIONAL
 );
 
 // Reads the settings from variables. Defaults fills in bad or missing ones.

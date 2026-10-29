@@ -79,7 +79,6 @@ typedef enum {
   BOOT_ERROR_NO_IMAGE,       // nothing bootable on the source
   BOOT_ERROR_LOAD_FAILED,    // an image failed to load or start
   BOOT_ERROR_ANDROID,        // Android boot isn't available
-  BOOT_ERROR_MODEL_NOT_SET,  // a model is needed for the devicetree
   BOOT_ERROR_ANDROID_FAILED, // booting Android (boot_a/b) returned
   BOOT_ERROR_WIPE_BY_HAND,   // Linux removed, but Android isn't the boot mode
   BOOT_ERROR_UNINSTALL,      // removing Linux failed; ErrorDetail says why
@@ -217,7 +216,6 @@ typedef enum {
   ENTRY_KIND_UKI,
   ENTRY_KIND_EXTLINUX,
   ENTRY_KIND_DEFAULT_FILE,
-  ENTRY_KIND_BOOT_IMAGE,
 } ENTRY_KIND;
 
 // A boot entry the platform found. Start boots the first.
@@ -523,10 +521,12 @@ AppSettingsSize (VOID);
 // Keys
 //
 // Firmware key protocols report presses but not releases. USB keyboards
-// repeat a held key and handheld keypads don't (the Mangmi Pocket Max sends
-// one event per press). So every action is a single press, and holding a
-// key only scrolls where the firmware repeats it. A key counts as held
-// while its reports arrive less than KEY_GAP_MS apart.
+// repeat a held key. Qualcomm's keypad reports a press once, but reports a
+// key that is still down again after a reset of the input (Efi/Input.c
+// resets it after each read, as Qualcomm's own menu does). So a held key
+// arrives as a stream of reports, and counts as held while they arrive less
+// than KEY_GAP_MS apart. Every action is a single press; only Up and Down
+// repeat while held, to scroll.
 
 // Reports closer together than this are one key held.
 #define KEY_GAP_MS 200
@@ -535,8 +535,10 @@ AppSettingsSize (VOID);
 #define KEY_REPEAT_EVERY_MS 120
 
 // The held key, if any, with the times (ms) of its reports and last input.
+// A muted key makes no input until it is released.
 typedef struct _KEYS {
   BOOLEAN Held;
+  BOOLEAN Muted;
   INPUT   Key;
   UINT64  Start, Last, LastEmit;
 } KEYS;
@@ -548,6 +550,15 @@ KeysPress (
   IN INPUT     Key,
   IN UINT64    Now,
   OUT INPUT   *Out
+);
+
+// Takes a report of a key that was already down, as one held to open the
+// menu: it is held but makes no input until released.
+VOID
+KeysMute (
+  IN OUT KEYS *Keys,
+  IN INPUT     Key,
+  IN UINT64    Now
 );
 
 // Call on a poll with no key report, so a released key stops being held.

@@ -88,32 +88,26 @@ VarSet (
   EFI_STATUS Status = MenuVarPut (Name, Data, Size);
 
   if (EFI_ERROR (Status)) {
-    MenuLog ("SetVariable %s failed: %s", Name, MENU_STATUS (Status));
+    MenuLog ("setting %s failed: %s", Name, MENU_STATUS (Status));
   }
 }
 
 VOID
 MenuFlush (VOID)
 {
-  EFI_STATUS Status;
+  EFI_STATUS Status = VariablesFlush ();
 
-  if (QcomFlushVariables (&Status) &&
-      (EFI_ERROR (Status) || Status == EFI_WARN_WRITE_FAILURE)) {
-    MenuLog (
-      "%s%s",
-      QcomHasVariableServices () ? "FlushVariableNV: "
-                                 : "the settings into devinfo: ",
-      MENU_STATUS (Status)
-    );
+  if (EFI_ERROR (Status)) {
+    MenuLog ("saving the settings to misc: %s", MENU_STATUS (Status));
   }
 }
 
 // The settings Save stores. MenuSavePrefs saves the display preferences.
-STATIC CONST CHAR8 *CONST mAblKeys[7] = {
+STATIC CONST CHAR8 *CONST mAblKeys[8] = {
   SETTINGS_KEY_BOOT_MODE,        SETTINGS_KEY_ABL_MODE,
   SETTINGS_KEY_ALT_VOLUME_UP,    SETTINGS_KEY_BOOT_SOURCE,
   SETTINGS_KEY_OFFMODE_CHARGING, SETTINGS_KEY_MODEL,
-  SETTINGS_KEY_CUSTOM_LOGO,
+  SETTINGS_KEY_CUSTOM_LOGO,      SETTINGS_KEY_REVERSE_VOLUME,
 };
 
 STATIC BOOLEAN
@@ -186,12 +180,12 @@ CarriedResult (VOID)
   MenuFlush ();
   MenuLog ("the boot before the restart: %u", Result);
   return Result >= MENU_START_RESULT_NOTHING &&
-             Result <= MENU_START_RESULT_FAILED
+             Result <= MENU_START_RESULT_RETURNED
            ? Result
            : MENU_START_RESULT_NONE;
 }
 
-BOOLEAN
+VOID
 MenuStoredSettings (
   IN CONST MENU_HOST_STATE *State,
   IN CONST SETTINGS_CAPS   *Caps,
@@ -200,9 +194,6 @@ MenuStoredSettings (
 {
   SETTINGS Defaults;
 
-  if (!SettingsInVars (StoredSettingGet, NULL)) {
-    return FALSE;
-  }
   SettingsDefault (&Defaults);
   SettingsFromVars (&Defaults, StoredSettingGet, NULL, Out);
   // An ABL built without USB host reads the USB boot source as Auto.
@@ -211,7 +202,6 @@ MenuStoredSettings (
   }
   // The charger screen setting is Qualcomm's devinfo flag.
   Out->OffmodeCharging = State->OffmodeCharging != 0;
-  return TRUE;
 }
 
 // Reads a two-byte little-endian variable. Fails if it isn't two bytes.
@@ -282,7 +272,6 @@ MenuSavePrefs (IN CONST SETTINGS *Settings)
   WriteLe16 (Bytes, Settings->ModelRotation);
   VarSet (SETTINGS_KEY_MODEL_ROTATION, Bytes, 2);
   VarSet (SETTINGS_KEY_LANGUAGE, &Settings->Language, 1);
-  VarSet (SETTINGS_KEY_REVERSE_VOLUME, &Settings->ReverseVolume, 1);
   MenuFlush ();
 }
 
@@ -327,40 +316,12 @@ InfoOf (OUT DEVICE_INFO *Info)
   Take (Info->SdCard, sizeof (Info->SdCard), SysInfoSdCard ());
 }
 
-VOID
-MenuSettingsOf (
-  IN CONST MENU_HOST_STATE *State,
-  OUT SETTINGS             *Out
-)
-{
-  SettingsDefault (Out);
-  Out->BootMode    = State->BootMode == 1 ? BOOT_MODE_ANDROID : BOOT_MODE_LINUX;
-  Out->AblMode     = State->AblMode == 1 ? ABL_MODE_VERBOSE : ABL_MODE_SILENT;
-  Out->AltVolumeUp = State->AltVolumeUp != 0;
-  switch (State->BootSource) {
-  case MENU_HOST_BOOT_SOURCE_INTERNAL:
-    Out->BootSource = BOOT_SOURCE_INTERNAL;
-    break;
-  case MENU_HOST_BOOT_SOURCE_USB:
-    Out->BootSource = BOOT_SOURCE_USB;
-    break;
-  case MENU_HOST_BOOT_SOURCE_SDCARD:
-    Out->BootSource = BOOT_SOURCE_SD;
-    break;
-  default:
-    Out->BootSource = BOOT_SOURCE_AUTO;
-  }
-  Out->OffmodeCharging = State->OffmodeCharging != 0;
-}
-
 // The menu
 
 typedef struct _MENU_STATE {
   MENU_HOST Host;
   // The settings as stored, plus the display preferences.
-  SETTINGS Stored;
-  // The settings are in variables, so the menu can change them.
-  BOOLEAN       Writable;
+  SETTINGS      Stored;
   SETTINGS_CAPS Caps;
   // Started on the model list after the restart for it. USB host is up, so
   // the USB boot source can be scanned.
@@ -397,20 +358,12 @@ MenuNew (
   }
   *M          = (MENU_STATE){.Host = *Host, .StartModels = StartModels};
   M->Caps     = MenuCapsOf (&State);
-  M->Writable = MenuStoredSettings (&State, &M->Caps, &M->Stored);
-  if (!M->Writable) {
-    MenuLog (
-      "the settings aren't in UEFI variables (they couldn't be written): "
-      "shown, not changed"
-    );
-    MenuSettingsOf (&State, &M->Stored);
-  }
+  MenuStoredSettings (&State, &M->Caps, &M->Stored);
   MenuLoadPrefs (
     M->Stored.Model, &M->Stored.Rotation, &M->Stored.ModelRotation,
     &M->Stored.Language
   );
   LangSet (M->Stored.Language);
-  M->Stored.ReverseVolume = MenuVarIs (SETTINGS_KEY_REVERSE_VOLUME, 1);
   Version = MenuHostText (State.Version, sizeof (State.Version));
   AsciiStrCopy (M->AblVersion, sizeof (M->AblVersion), Version ? Version : "");
   FreePool (Version);
@@ -433,16 +386,12 @@ Refresh (IN OUT MENU_STATE *M)
     return Status;
   }
   M->Caps     = MenuCapsOf (&State);
-  M->Writable = MenuStoredSettings (&State, &M->Caps, &Base);
-  if (!M->Writable) {
-    MenuSettingsOf (&State, &Base);
-  }
+  MenuStoredSettings (&State, &M->Caps, &Base);
   Base.ModelRotation = AsciiStrEq (Base.Model, M->Stored.Model)
                          ? M->Stored.ModelRotation
                          : ROTATION_NONE;
   Base.Rotation      = M->Stored.Rotation;
   Base.Language      = M->Stored.Language;
-  Base.ReverseVolume = M->Stored.ReverseVolume;
   M->Stored          = Base;
   return EFI_SUCCESS;
 }
@@ -466,12 +415,6 @@ Save (
     }
   }
   Count = Kept;
-  if (Count && !M->Writable) {
-    MenuLog (
-      "the settings aren't in UEFI variables: they can't be changed here"
-    );
-    return gStrings->AblSettingFailed;
-  }
   for (UINTN Index = 0; Index < Count; Index++) {
     CONST CHAR8 *Key   = Changes[Index].Name;
     CONST UINT8 *Value = Changes[Index].Value;
@@ -516,7 +459,6 @@ Save (
   AsciiStrCopy (M->Stored.Model, sizeof (M->Stored.Model), Want->Model);
   M->Stored.ModelRotation = Want->ModelRotation;
   M->Stored.Language      = Want->Language;
-  M->Stored.ReverseVolume = Want->ReverseVolume;
   MenuSavePrefs (Want);
   if (EFI_ERROR (Refresh (M))) {
     return gStrings->AblNotAnswering;
@@ -577,9 +519,6 @@ RestartToScan (IN MENU_STATE *M)
   STATIC CONST UINT8 One = 1;
   EFI_STATUS         Status;
 
-  if (!M->Writable) {
-    return EFI_UNSUPPORTED;
-  }
   Status = MenuVarPut (SETTINGS_KEY_SHOW_MODEL_MENU, &One, 1);
   if (EFI_ERROR (Status)) {
     MenuLog ("setting ShowModelMenu failed: %s", MENU_STATUS (Status));
@@ -806,9 +745,8 @@ AddRow (
 }
 
 // Lists what Start would try on the allowed drives, in its order: each
-// drive's entries, then each drive's default file, then the first boot
-// image. Only in Linux boot mode. USB drives are skipped unless USB
-// host is up, since fastboot owns the controller.
+// drive's entries, then each drive's default file. Only in Linux boot mode. USB
+// drives are skipped unless USB host is up, since fastboot owns the controller.
 STATIC VOID
 FillEntries (
   IN MENU_STATE *M,
@@ -818,7 +756,6 @@ FillEntries (
   STATIC ENTRY_VIEW   Views[MAX_ENTRIES];
   VOLUMES_HANDLE_LIST Drives = {0};
   UINTN               Count  = 0;
-  BOOLEAN             Image  = FALSE;
 
   BootEntriesVolumesFree (&mVolumes);
   if (M->Stored.BootMode == BOOT_MODE_LINUX &&
@@ -860,26 +797,6 @@ FillEntries (
       }
     }
   }
-  // Start reaches a boot image only after every drive's entries and
-  // default files.
-  for (UINTN Index = 0; Index < mVolumes.Count && !Image; Index++) {
-    for (UINTN Index2 = 0;
-         Index2 < sizeof (gModelsBootImages) / sizeof (*gModelsBootImages) &&
-         !Image;
-         Index2++) {
-      // A file that isn't a valid Android boot image is skipped.
-      if (ModelsIsBootImage (
-            mVolumes.Items[Index].Fs, gModelsBootImages[Index2]
-          )) {
-        // The path without its backslash, such as KERNEL.
-        AddRow (
-          Views, &Count, Index, gModelsBootImages[Index2] + 1,
-          ENTRY_KIND_BOOT_IMAGE, NULL, FALSE, MENU_PICK_BOOT_IMAGE
-        );
-        Image = TRUE;
-      }
-    }
-  }
   MenuLog ("Boot entries: %llu", (UINT64)Count);
   AppSetEntries (A, Views, Count);
   VecFree (&Drives);
@@ -918,14 +835,12 @@ STATIC BOOLEAN
 CameBackShown (
   IN CONST MENU_STATE *M,
   OUT BOOLEAN         *Ok,
-  OUT BOOT_ERROR      *Error,
-  OUT CONST CHAR8    **Detail
+  OUT BOOT_ERROR      *Error
 )
 {
   CONST CHAR8 *What;
 
-  *Ok     = FALSE;
-  *Detail = "";
+  *Ok = FALSE;
   switch (M->CameBack) {
   case MENU_START_RESULT_NOTHING:
     What   = "nothing to boot";
@@ -934,15 +849,6 @@ CameBackShown (
   case MENU_START_RESULT_RETURNED:
     What = "the booted image returned";
     *Ok  = TRUE;
-    break;
-  case MENU_START_RESULT_NO_MODEL:
-    What   = "the boot image needs a device model";
-    *Error = BOOT_ERROR_MODEL_NOT_SET;
-    break;
-  case MENU_START_RESULT_FAILED:
-    What    = "the boot image failed";
-    *Error  = BOOT_ERROR_LOAD_FAILED;
-    *Detail = gStrings->ErrBootImageFailed;
     break;
   case MENU_START_RESULT_NO_USB:
     // Only shown if the restart for it didn't happen.
@@ -1431,7 +1337,7 @@ RunCommand (
 #ifdef OABL_DEBUG
     EXPERIMENTS Want = Command.Experiments;
     EXPERIMENTS Now;
-    BOOLEAN     Ok = M->Writable && SaveExperiments (Want) == EFI_SUCCESS;
+    BOOLEAN     Ok = SaveExperiments (Want) == EFI_SUCCESS;
 
     Now = Experiments ();
     AppSetExperiments (&mApp, &Now);
@@ -1618,11 +1524,10 @@ MenuRun (
 #endif
   AppStart (&mApp, ClockNowMs (), TRUE);
   {
-    BOOLEAN      Ok;
-    BOOT_ERROR   Error;
-    CONST CHAR8 *Detail;
-    if (CameBackShown (&M, &Ok, &Error, &Detail)) {
-      AppOnBootResult (&mApp, Ok, Error, Detail);
+    BOOLEAN    Ok;
+    BOOT_ERROR Error;
+    if (CameBackShown (&M, &Ok, &Error)) {
+      AppOnBootResult (&mApp, Ok, Error, NULL);
     }
   }
   if (StartModels) {
@@ -1636,7 +1541,7 @@ MenuRun (
   gST->ConOut->ClearScreen (gST->ConOut);
   gST->ConOut->EnableCursor (gST->ConOut, FALSE);
   // Ignore a key still held from opening the menu.
-  InputKeysHeldAtStart (&Keys);
+  InputKeysHeldAtStart (&Keys, ClockNowMs ());
   ViewRotate (Rotation);
   mApp.Dirty = TRUE;
 
@@ -1685,6 +1590,8 @@ MenuRun (
         ViewDone ();
         return (MENU_END){MENU_END_START_HERE, EFI_ABORTED};
       }
+      // The key that started a slow command can still be reported.
+      InputKeysAfterBusy (&Keys, ClockNowMs ());
       continue;
     }
     // Give idle time to fastboot. The ABL serves one USB event per poll,

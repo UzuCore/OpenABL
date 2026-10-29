@@ -28,8 +28,10 @@
 // high speed instead. Every build gives a card one second to power up; that 
 // becomes four seconds. Then signals card detection again, and puts the second back.
 // The OABL_SDCC_* builds patch more SdccDxe words, and the G2 Gen 2 also gets
-// its SD command line pull-up. With OABL_SD_DIAGNOSTICS the SD slot is logged
-// before and after. Returns the number of S18R sites patched.
+// its SD command line pull-up. On SM4450 a card that detection leaves
+// holding DAT low is power-cycled and detected again. With
+// OABL_SD_DIAGNOSTICS the SD slot is logged before and after. Returns the
+// number of S18R sites patched.
 UINT32
 QuirksSdccUhs (
   IN UINT32   Chip,
@@ -82,16 +84,6 @@ QuirksPrepareStorage (
 // Returns ChipInfo's chip id, or 0 if it can't be read.
 UINT32
 QuirksChipId (VOID);
-
-// Applies the devicetree fix-ups for a kernel; Fdt may grow up to Cap bytes.
-// After a USB boot the USB controller is put in host mode.
-VOID
-QuirksFixupDeviceTree (
-  IN OUT UINT8 *Fdt,
-  IN UINTN      Cap,
-  IN BOOLEAN    Usb,
-  IN LOG_SINK   Log
-);
 
 // The settings Qualcomm's code in the ABL reads, one byte each, 0 when
 // unset.
