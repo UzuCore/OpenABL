@@ -6,7 +6,7 @@
 /**
   Main - renders the menu's screens to PNG on the host.
 
-    openabl-menu-sim [--out DIR] [--filter TEXT] [--lang en|ko] [--check]
+    openabl-menu-sim [--out DIR] [--filter TEXT] [--lang en|zh-hans] [--check]
 
   For every panel and rotation it writes the main menu as the user sees it
   (*-view.png) and as the panel receives it (*-scanout.png, rotated). A few
@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include <zlib.h>
 
 #include "Core/Settings.h"
@@ -85,6 +87,32 @@ Chunk (
   uLong Crc         = crc32 (crc32 (0, (CONST Bytef *)Type, 4), Data, Len);
   UINT8 CrcBytes[4] = {Crc >> 24, Crc >> 16, Crc >> 8, Crc};
   fwrite (CrcBytes, 1, 4, File);
+}
+
+// Creates Path and any missing parents. Exits if one can't be made.
+STATIC VOID
+MakeDirs (
+  IN CONST CHAR8  *Path
+)
+{
+  CHAR8 Dir[4096];
+
+  snprintf (Dir, sizeof (Dir), "%s", Path);
+  for (CHAR8 *Slash = Dir + 1;; Slash++) {
+    if (*Slash != '/' && *Slash != '\0') {
+      continue;
+    }
+    CHAR8 Saved = *Slash;
+    *Slash = '\0';
+    if (mkdir (Dir, 0755) && errno != EEXIST) {
+      perror (Dir);
+      exit (1);
+    }
+    *Slash = Saved;
+    if (Saved == '\0') {
+      break;
+    }
+  }
 }
 
 // Writes 0x00RRGGBB pixels as an RGB PNG. Exits if Path can't be opened.
@@ -227,19 +255,6 @@ SMenu (
   (VOID)A, (VOID)Now;
 }
 
-STATIC VOID
-SCountdown (
-  IN OUT APP *A,
-  IN UINT64   Now
-)
-{
-  SETTINGS Settings     = A->Settings;
-  Settings.MenuTimeoutS = 5;
-  MakeApp (A, &Settings);
-  AppStart (A, Now, FALSE);
-  AppTick (A, Now + 1200);
-}
-
 // Values too long for the info card's boxes, shrunk to fit: an SoC name as
 // the ABL reports it and a long device model name.
 STATIC VOID
@@ -282,6 +297,17 @@ SModels (
   (VOID)Now;
   AppOnModels (A, Models, Count);
   AppInput (A, INPUT_DOWN);
+}
+
+STATIC VOID
+SLanguages (
+  IN OUT APP *A,
+  IN UINT64   Now
+)
+{
+  (VOID)Now;
+  A->FocusItem = ITEM_LANGUAGE;
+  AppInput (A, INPUT_SELECT);
 }
 
 STATIC VOID
@@ -425,15 +451,40 @@ SEntries (
   AppInput (A, INPUT_DOWN);
 }
 
+// Boot entries before a boot, as loader.conf's "timeout 5" shows it, 1.2 s
+// in.
+STATIC VOID
+SEntriesCountdown (
+  IN OUT APP *A,
+  IN UINT64   Now
+)
+{
+  SMenuEntries (A, Now);
+  AppStartEntries (A, Now, 5);
+  AppTick (A, Now + 1200);
+}
+
+// Boot entries before a boot, as loader.conf's "timeout menu-force" shows
+// it.
+STATIC VOID
+SEntriesForce (
+  IN OUT APP *A,
+  IN UINT64   Now
+)
+{
+  SMenuEntries (A, Now);
+  AppStartEntries (A, Now, 0);
+}
+
 STATIC CONST struct {
   CONST CHAR8  *Name;
   SESSION_SETUP Setup;
 } mScreens[] = {
   {"menu", SMenu},
-  {"menu-countdown", SCountdown},
   {"menu-long-values", SLongValues},
   {"menu-scrolled", SScrolled},
   {"models", SModels},
+  {"languages", SLanguages},
   {"confirm-uninstall", SConfirmUninstall},
   {"confirm-uninstall-final", SConfirmUninstallFinal},
   {"confirm-edl", SConfirmEdl},
@@ -446,6 +497,8 @@ STATIC CONST struct {
   {"toast", SToast},
   {"menu-entries", SMenuEntries},
   {"entries", SEntries},
+  {"entries-countdown", SEntriesCountdown},
+  {"entries-force", SEntriesForce},
 };
 
 STATIC APP mApp;
@@ -973,20 +1026,20 @@ main (
     } else if (!strcmp (Argv[Index], "--filter") && Index + 1 < Argc) {
       Filter = Argv[++Index];
     } else if (!strcmp (Argv[Index], "--lang") && Index + 1 < Argc &&
-               (!strcmp (Argv[Index + 1], "en") ||
-                !strcmp (Argv[Index + 1], "ko"))) {
-      mLanguage = strcmp (Argv[++Index], "en") ? LANG_KO : LANG_EN;
+               LangFromCode (Argv[Index + 1]) < LANG_COUNT) {
+      mLanguage = LangFromCode (Argv[++Index]);
     } else if (!strcmp (Argv[Index], "--check")) {
       DoCheck = TRUE;
     } else {
       fprintf (
         stderr,
-        "usage: %s [--out DIR] [--filter TEXT] [--lang en|ko] [--check]\n",
+        "usage: %s [--out DIR] [--filter TEXT] [--lang CODE] [--check]\n",
         Argv[0]
       );
       return 2;
     }
   }
+  MakeDirs (Out);
   if (DoCheck) {
     STATIC CONST INT32 Pairs[][3] = {
       {1280, 800, 0}, {1080, 1920, 270}, {960, 1280, 90}, {1080, 1920, 0}};

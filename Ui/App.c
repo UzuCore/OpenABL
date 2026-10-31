@@ -215,8 +215,28 @@ AppStart (
     return BeginBoot (A);
   }
   A->Countdown      = TRUE;
-  A->CountdownUntil = Now + (UINT64)A->Settings.MenuTimeoutS * 1000;
+  A->CountdownMs    = (UINT64)A->Settings.MenuTimeoutS * 1000;
+  A->CountdownUntil = Now + A->CountdownMs;
   return None ();
+}
+
+VOID
+AppStartEntries (
+  IN OUT APP *A,
+  IN UINT64   Now,
+  IN UINT32   TimeoutS
+)
+{
+  A->Now        = Now;
+  A->Dirty      = TRUE;
+  A->BootPicker = TRUE;
+  A->Screen     = SCREEN_ENTRIES;
+  A->EntryList  = (LIST_STATE){0};
+  if (TimeoutS) {
+    A->Countdown      = TRUE;
+    A->CountdownMs    = (UINT64)TimeoutS * 1000;
+    A->CountdownUntil = Now + A->CountdownMs;
+  }
 }
 
 COMMAND
@@ -688,8 +708,9 @@ AppItemView (
     View->Trailing = TRAILING_NONE;
     break;
   case ITEM_LANGUAGE:
-    View->Icon  = ICON_SWITCH;
-    View->Label = gStrings->Language;
+    View->Icon     = ICON_WORLD;
+    View->Label    = gStrings->Language;
+    View->Trailing = TRAILING_NAVIGATE;
     AsciiStrCopy (Value, Cap, LangName (Settings->Language));
     break;
   case ITEM_BOOT_MODE:
@@ -839,9 +860,9 @@ Activate (
     A->ConfirmYes = FALSE;
     return None ();
   case ITEM_LANGUAGE:
-    SettingsNextLanguage (Settings);
-    LangSet (Settings->Language);
-    return Command (COMMAND_SAVE_SETTINGS, 0);
+    A->Screen       = SCREEN_LANGUAGES;
+    A->LanguageList = (LIST_STATE){.Focus = Settings->Language};
+    return None ();
   case ITEM_BOOT_MODE:
     if (!A->Caps.Android) {
       ShowToast (A, gStrings->ToastAndroidInAbl);
@@ -1019,11 +1040,16 @@ ModelsInput (
   return None ();
 }
 
-STATIC VOID
+// Back to the menu. Before a boot there is no menu here, so ask for it.
+STATIC COMMAND
 LeaveEntries (IN OUT APP *A)
 {
+  if (A->BootPicker) {
+    return Command (COMMAND_OPEN_MENU, 0);
+  }
   A->Screen    = SCREEN_MENU;
   A->FocusItem = ITEM_ENTRIES;
+  return None ();
 }
 
 STATIC COMMAND
@@ -1044,15 +1070,52 @@ EntriesInput (
     A->EntryList.Focus = (Focus + 1) % Count;
     break;
   case INPUT_BACK:
-    LeaveEntries (A);
-    break;
+    return LeaveEntries (A);
   case INPUT_SELECT:
     if (Focus < A->EntryCount) {
       A->Screen  = SCREEN_BOOTING;
       A->Booting = (INT32)Focus;
       return Command (COMMAND_BOOT_ENTRY, (INT32)Focus);
     }
-    LeaveEntries (A);
+    return LeaveEntries (A);
+  }
+  return None ();
+}
+
+STATIC VOID
+LeaveLanguages (IN OUT APP *A)
+{
+  A->Screen    = SCREEN_MENU;
+  A->FocusItem = ITEM_LANGUAGE;
+}
+
+STATIC COMMAND
+LanguagesInput (
+  IN OUT APP *A,
+  IN INPUT    Input
+)
+{
+  // Rows: each language, then "Back".
+  UINTN Count = LANG_COUNT + 1;
+  UINTN Focus = A->LanguageList.Focus;
+
+  switch (Input) {
+  case INPUT_UP:
+    A->LanguageList.Focus = (Focus + Count - 1) % Count;
+    break;
+  case INPUT_DOWN:
+    A->LanguageList.Focus = (Focus + 1) % Count;
+    break;
+  case INPUT_BACK:
+    LeaveLanguages (A);
+    break;
+  case INPUT_SELECT:
+    LeaveLanguages (A);
+    if (Focus < LANG_COUNT && Focus != A->Settings.Language) {
+      A->Settings.Language = (UINT8)Focus;
+      LangSet (A->Settings.Language);
+      return Command (COMMAND_SAVE_SETTINGS, 0);
+    }
     break;
   }
   return None ();
@@ -1113,6 +1176,8 @@ AppInput (
     return ModelsInput (A, Input);
   case SCREEN_ENTRIES:
     return EntriesInput (A, Input);
+  case SCREEN_LANGUAGES:
+    return LanguagesInput (A, Input);
   case SCREEN_CONFIRM:
     return ConfirmInput (A, Input);
   case SCREEN_ERROR:

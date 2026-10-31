@@ -51,6 +51,7 @@ fastboot flash abl_b abl_signed-SM8550.elf
 | 복구 모드 | Android 복구 모드로 재시작합니다. |
 | 긴급 다운로드 모드 (EDL) | 확인을 거쳐 Qualcomm EDL 모드로 재시작합니다. |
 | 다른 슬롯으로 부팅 | 다른 A/B 슬롯으로 전환합니다. A/B 기기에 표시됩니다. |
+| 언어 | 각 언어의 원래 이름으로 표시된 목록에서 메뉴 언어를 선택합니다. |
 | 부팅 모드 | Linux 또는 Android를 선택합니다. |
 | ABL 모드 | *출력 안 함* 또는 부팅 중 ABL 로그를 화면에 표시하는 *상세 출력*을 선택합니다. |
 | 부팅 시 볼륨+ 버튼 | 전원을 켤 때 볼륨 높임 버튼을 누르고 있으면 수행할 동작을 설정합니다. |
@@ -91,6 +92,19 @@ fastboot flash abl_b abl_signed-SM8550.elf
 | extlinux.conf | `\extlinux\extlinux.conf`, `\boot\extlinux\extlinux.conf` |
 | 기본 부팅 파일(GRUB, systemd-boot 또는 기타 EFI 로더) | `\EFI\BOOT\BOOTAA64.EFI` |
 
+`\loader\loader.conf`의 `timeout` 값에 따라 Linux 부팅 전에 부팅 항목 목록을 표시합니다.
+허용된 드라이브 중 `timeout`이 있는 첫 번째 `loader.conf`를 사용합니다.
+
+| `timeout` | 부팅 동작 |
+|---|---|
+| 미설정, `0`, `menu-hidden`, `menu-disabled` | 기본 항목으로 바로 부팅합니다. |
+| 초 단위 숫자 | 부팅 항목을 표시하고 기본 항목까지 카운트다운합니다. 아무 버튼이나 누르면 카운트다운을 중단하며, 뒤로 가기는 메뉴를 엽니다. |
+| `menu-force` | 항목을 선택할 때까지 부팅 항목 목록을 표시합니다. |
+
+systemd-boot와 마찬가지로 `LoaderConfigTimeout`(`bootctl set-timeout`)이 이 값을 덮어쓰며,
+`LoaderConfigTimeoutOneShot`(`systemctl reboot --boot-loader-menu=`)은 한 번만 우선 적용되어
+항목 목록을 표시합니다. `LoaderEntryOneShot`으로 지정된 항목은 바로 부팅합니다.
+
 - 커널은 EFI 스텁을 통해 실행합니다. gzip으로 압축된 커널은 먼저 압축을 풉니다.
   initrd와 함께 부팅 항목 또는 선택한 기기 모델의 장치 트리를 전달합니다.
 - OS를 시작하기 전에 XBL이 더 이상 사용하지 않는 메모리를 OS에 반환합니다.
@@ -121,8 +135,9 @@ fastboot flash abl_b abl_signed-SM8550.elf
 **Android**는 Qualcomm ABL과 마찬가지로 기기 자체의 부팅 파티션에서 시작하며,
 검증 부팅과 복구 모드도 지원합니다.
 
-메뉴는 영어와 한국어를 지원합니다. Language 설정에서 한국어를 선택하세요.
-한국어는 중국어 간체를 대체하며, 기존에 저장된 언어 설정 값을 그대로 사용합니다.
+메뉴는 영어, 중국어 간체, 한국어를 지원합니다. 언어 목록에서 한국어를 선택하세요.
+언어 ID는 업스트림 순서를 유지하며 영어 0, 중국어 간체 1, 한국어 2입니다.
+기존 한국어 대체 빌드에서 언어 값 1을 저장했다면, 업데이트 후 한국어를 한 번 다시 선택하세요.
 
 ## 빌드
 
@@ -144,7 +159,7 @@ OTA 업데이트 후 반대쪽 슬롯에 다시 기록해 유지하는 addon.d �
 
 | 옵션 | 설명 |
 |---|---|
-| `--no-standard-boot` | 표준 Linux 부팅 기능을 제외합니다. |
+| `--no-standard-boot` | 표준 Linux 부팅 기능을 제외하고 기본 EFI 부팅 파일만 사용합니다. |
 | `--debug` | 메뉴에 디버그 항목이 추가된 디버그 빌드를 생성합니다. |
 | `--clean` | 각 칩셋을 처음부터 다시 빌드합니다. |
 
@@ -161,6 +176,10 @@ OTA 업데이트 후 반대쪽 슬롯에 다시 기록해 유지하는 addon.d �
 ```bash
 make FEATURES=standard-boot,card-logo
 ```
+
+**언어 추가:** `Ui/Lang/`의 `En.c`, `ZhHans.c`, `Ko.c`에 언어별 문자열이 있습니다.
+새 언어는 `En.c`를 복사해 번역한 뒤 `Ui/Lang/Languages.h`의 목록 끝에 추가합니다.
+번역하지 않은 문자열은 영어로 표시됩니다.
 
 기기에 플래시하지 않고 한국어 메뉴를 미리 보려면 다음을 실행하세요.
 

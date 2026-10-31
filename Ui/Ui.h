@@ -65,6 +65,7 @@ typedef enum {
   COMMAND_DEVICE_INFO,
   COMMAND_LOG,
   COMMAND_SAVE_EXPERIMENTS, // saves Experiments
+  COMMAND_OPEN_MENU,        // leave Boot entries before a boot for the menu
 } COMMAND_KIND;
 
 // Work for the platform. Run it after the next frame, so the screen
@@ -177,12 +178,13 @@ typedef enum {
   SCREEN_SCANNING,
   SCREEN_MODELS,
   SCREEN_ENTRIES,
+  SCREEN_LANGUAGES,
   SCREEN_CONFIRM,
   SCREEN_BOOTING,
   SCREEN_ERROR,
-  SCREEN_LINES,      // the device info, or the log
+  SCREEN_LINES,        // the device info, or the log
   SCREEN_UNINSTALLING, // while Linux is removed; takes no input
-  SCREEN_RESTARTING, // into recovery after an uninstall; takes no input
+  SCREEN_RESTARTING,   // into recovery after an uninstall; takes no input
 } SCREEN;
 
 // An uninstall asks twice: the partitions it erases, then once more.
@@ -270,6 +272,9 @@ typedef struct _APP {
   UINTN      EntryCount;
   LIST_STATE EntryList;
 
+  // Rows: each language in LANG_LIST order, then "Back".
+  LIST_STATE LanguageList;
+
   // The device info or the log. LinesFrom is the menu item it was opened
   // from, focused again on the way back.
   TEXT_LINE    Lines[MAX_LINES];
@@ -285,6 +290,11 @@ typedef struct _APP {
   UINT64  ToastUntil; // 0 for no toast
   BOOLEAN Countdown;
   UINT64  CountdownUntil;
+  // How long the countdown ran from the start, in ms.
+  UINT64 CountdownMs;
+  // Boot entries shown before a boot, with no menu behind it. Back asks
+  // for the menu.
+  BOOLEAN BootPicker;
   // Clock in milliseconds, from the last call that passed it.
   UINT64 Now;
   // Set when the state changes. ViewSync clears it.
@@ -312,6 +322,15 @@ AppStart (
   IN OUT APP *A,
   IN UINT64   Now,
   IN BOOLEAN  ForceMenu
+);
+
+// Opens Boot entries before a boot, with the default first. With TimeoutS
+// it counts down to booting the default; with 0 it waits for a pick.
+VOID
+AppStartEntries (
+  IN OUT APP *A,
+  IN UINT64   Now,
+  IN UINT32   TimeoutS
 );
 
 // Advances the clock to Now. Hides a toast that is due, and starts the
