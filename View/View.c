@@ -934,7 +934,7 @@ InfoValue (
 typedef struct _INFO_ROW {
   ICON         Icon;
   CONST CHAR8 *Label;
-  CHAR8        Value[MODEL_LEN + 16];
+  CHAR8        Value[SETTINGS_MAX_MODEL_LEN + 16];
 } INFO_ROW;
 
 // Value, or None when it is empty.
@@ -1097,9 +1097,9 @@ CountdownText (
 {
   UINT64       Seconds = 0;
   CHAR8        Number[12];
-  CONST CHAR8 *What = A->Settings.BootMode == BOOT_MODE_ANDROID ? "Android"
-                      : AppBootTitle (A) ? AppBootTitle (A)
-                                         : "Linux";
+  // Only Boot entries count down, and they always start Linux, even in
+  // Android mode when volume up was held.
+  CONST CHAR8 *What = AppBootTitle (A) ? AppBootTitle (A) : "Linux";
   AppCountdownSeconds (A, &Seconds);
   AsciiStrFromU64 (Number, sizeof (Number), Seconds);
   CONST CHAR8 *Args[] = {What, Number};
@@ -1176,20 +1176,23 @@ Countdown (
   Fill (Bar, THEME_ACCENT, 255);
 }
 
-// The menu, with the countdown banner over the list and the info card
-// beside it (landscape) or above it (portrait).
+// The menu or the developer options, with the info card beside the list
+// (landscape) or above it (portrait).
 STATIC VOID
 MenuDraw (IN OUT APP *A)
 {
-  ROW     Rows[MAX_ROWS];
-  INT32   Heights[MAX_ROWS];
-  BOOLEAN Headers[MAX_ROWS];
-  UINTN   Count = AppRows (A, Rows);
-  UINTN   Focus = AppFocusedRow (A, Rows, Count);
-  RECT    Body  = mView.Body;
-  RECT    Area;
-  RECT    Card;
-  LIST    List;
+  ROW         Rows[MAX_ROWS];
+  INT32       Heights[MAX_ROWS];
+  BOOLEAN     Headers[MAX_ROWS];
+  UINTN       Count = AppRows (A, Rows);
+  UINTN       Focus = AppFocusedRow (A, Rows, Count);
+  LIST_STATE *State = A->Screen == SCREEN_DEVELOPER_OPTIONS
+                        ? &A->DeveloperOptionsList
+                        : &A->Menu;
+  RECT        Body = mView.Body;
+  RECT        Area;
+  RECT        Card;
+  LIST        List;
 
   if (mView.W > mView.H) {
     INT32 Gap = ToPxInt (14);
@@ -1210,20 +1213,12 @@ MenuDraw (IN OUT APP *A)
       Rect (BottomPart.X, BottomPart.Y + Gap, BottomPart.W, BottomPart.H - Gap);
     Card = TopPart;
   }
-  if (A->Countdown) {
-    RECT  Banner;
-    RECT  Rest;
-    INT32 Gap = ToPxInt (8);
-    TakeTop (Area, ToPxInt (34), &Banner, &Rest);
-    Countdown (A, Banner);
-    Area = Rect (Rest.X, Rest.Y + Gap, Rest.W, Rest.H - Gap);
-  }
   for (UINTN Index = 0; Index < Count; Index++) {
     Headers[Index] = Rows[Index].Header != NULL;
     Heights[Index] = ToPxInt (Headers[Index] ? 22 : 30);
   }
   ListInit (&List, Area, ToPxInt (14), Count, Heights, Headers);
-  ListPlace (&List, Focus, &A->Menu.Scroll);
+  ListPlace (&List, Focus, &State->Scroll);
   for (UINTN Index = List.First; Index < List.End; Index++) {
     RECT Row = ListRow (&List, Index);
     if (Rows[Index].Header) {
@@ -2006,39 +2001,70 @@ OverlayDraw (IN CONST APP *A)
 STATIC BOOLEAN
 HasFooter (IN CONST APP *A)
 {
-  return A->Screen == SCREEN_MENU || A->Screen == SCREEN_MODELS ||
-         A->Screen == SCREEN_ENTRIES || A->Screen == SCREEN_LANGUAGES ||
+  return A->Screen == SCREEN_MENU || A->Screen == SCREEN_DEVELOPER_OPTIONS ||
+         A->Screen == SCREEN_MODELS || A->Screen == SCREEN_ENTRIES ||
+         A->Screen == SCREEN_LANGUAGES ||
          A->Screen == SCREEN_CONFIRM || A->Screen == SCREEN_LINES;
 }
 
-// The toast sits above the footer, or above the body's end on a screen
-// without one.
+// Width of the narrowest box, at most Max wide, that holds String in Lines
+// lines, so wrapped lines come out about as long as each other.
+STATIC float
+BalancedWidth (
+  IN CONST CHAR8 *String,
+  IN float        Max,
+  IN INT32        Lines
+)
+{
+  float Lo = Max / (float)Lines;
+  float Hi = Max;
+
+  while (Hi - Lo > 1) {
+    float Mid = (Lo + Hi) / 2;
+
+    if (WrapCount (String, 13.5f, FONT_WEIGHT_REGULAR, Mid) > Lines) {
+      Lo = Mid;
+    } else {
+      Hi = Mid;
+    }
+  }
+  return Hi;
+}
+
+// The toast, centred above the footer, or above the body's end on a screen
+// without one. Text too long for one line on a narrow screen goes on two
+// lines of about equal length, centred.
 STATIC VOID
 ToastDraw (IN CONST APP *A)
 {
-  float H     = ToPx (32);
-  float Top   = (float)(HasFooter (A) ? mView.Footer.Y : Bottom (mView.Body)) -
-                H - ToPx (8);
+  float LineH = ToPx (13.5f * 1.35f);
+  float TextX = ToPx (14 + 14 + 8);
+  float Right = ToPx (14);
   float TextW = Measure (A->Toast, 13.5f, FONT_WEIGHT_REGULAR) + 1;
   float MaxW  = (float)mView.W - ToPx (28);
-  float W     = TextW + ToPx (14 * 2 + 14 + 8);
+  INT32 Lines = 1;
 
-  if (W > MaxW) {
-    W = MaxW;
+  if (TextW + TextX + Right > MaxW) {
+    float Avail = MaxW - TextX - Right;
+
+    Lines = WrapCount (A->Toast, 13.5f, FONT_WEIGHT_REGULAR, Avail);
+    Lines = Lines < 1 ? 1 : Lines > 2 ? 2 : Lines;
+    TextW = Lines > 1 ? BalancedWidth (A->Toast, Avail, Lines) : Avail;
   }
-  RECT Area = Rectf ((float)mView.W / 2 - W / 2, Top, W, H);
+  float W   = TextW + TextX + Right;
+  float H   = ToPx (32) + (float)(Lines - 1) * LineH;
+  float Top = (float)(HasFooter (A) ? mView.Footer.Y : Bottom (mView.Body)) -
+              H - ToPx (8);
+  RECT  Area = Rectf ((float)mView.W / 2 - W / 2, Top, W, H);
   RoundRect (Area, 16, THEME_TOAST);
   Icon (
     ICON_INFO, (float)Area.X + ToPx (14 + 7), (float)Area.Y + (float)Area.H / 2,
     ToPx (14), THEME_ACCENT
   );
-  float TextX = ToPx (14 + 14 + 8);
-  TextIn (
-    Rectf (
-      (float)Area.X + TextX, (float)Area.Y, (float)Area.W - TextX - ToPx (14),
-      (float)Area.H
-    ),
-    A->Toast, 13.5f, FONT_WEIGHT_REGULAR, THEME_TEXT, ALIGN_LEFT
+  Wrapped (
+    (float)Area.X + TextX,
+    (float)Area.Y + ((float)Area.H - (float)Lines * LineH) / 2, TextW,
+    A->Toast, 13.5f, FONT_WEIGHT_REGULAR, LineH, 2, THEME_TEXT, ALIGN_CENTER
   );
 }
 
@@ -2096,8 +2122,7 @@ Build (IN OUT APP *A)
   INT32   H;
   BOOLEAN Footer  = HasFooter (A);
   SCREEN  Screen  = A->Screen == SCREEN_CONFIRM ? SCREEN_MENU : A->Screen;
-  BOOLEAN WithBar =
-    (Screen == SCREEN_MENU || Screen == SCREEN_ENTRIES) && A->Countdown;
+  BOOLEAN WithBar = Screen == SCREEN_ENTRIES && A->Countdown;
 
   mView.App       = A;
   mView.Now       = mView.Clock ();
@@ -2130,6 +2155,7 @@ Build (IN OUT APP *A)
     }
     switch (Screen) {
     case SCREEN_MENU:
+    case SCREEN_DEVELOPER_OPTIONS:
     case SCREEN_CONFIRM:
       MenuDraw (A);
       break;

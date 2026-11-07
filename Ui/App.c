@@ -10,6 +10,7 @@
 #include "Base/Memory.h"
 #include "Base/Text.h"
 #include "Core/Settings.h"
+#include "Ui/DeveloperOptions.h"
 #include "Ui/Lang.h"
 #include "Ui/Ui.h"
 
@@ -128,16 +129,6 @@ AppSetFirmwareRotation (
 }
 
 VOID
-AppSetExperiments (
-  IN OUT APP           *A,
-  IN CONST EXPERIMENTS *Experiments
-)
-{
-  A->Experiments = *Experiments;
-  A->Dirty       = TRUE;
-}
-
-VOID
 AppSetEntries (
   IN OUT APP          *A,
   IN CONST ENTRY_VIEW *Entries,
@@ -199,25 +190,14 @@ BeginBoot (IN OUT APP *A)
   return Command (COMMAND_BOOT, 0);
 }
 
-COMMAND
+VOID
 AppStart (
   IN OUT APP *A,
-  IN UINT64   Now,
-  IN BOOLEAN  ForceMenu
+  IN UINT64   Now
 )
 {
   A->Now   = Now;
   A->Dirty = TRUE;
-  if (ForceMenu) {
-    return None ();
-  }
-  if (A->Settings.MenuTimeoutS == 0) {
-    return BeginBoot (A);
-  }
-  A->Countdown      = TRUE;
-  A->CountdownMs    = (UINT64)A->Settings.MenuTimeoutS * 1000;
-  A->CountdownUntil = Now + A->CountdownMs;
-  return None ();
 }
 
 VOID
@@ -337,11 +317,12 @@ ShowLines (
   IN UINTN        Focus
 )
 {
-  A->LinesTitle = Title;
-  A->LinesFrom  = From;
-  A->InfoList   = (LIST_STATE){.Focus = Focus, .Scroll = Focus};
-  A->Screen     = SCREEN_LINES;
-  A->Dirty      = TRUE;
+  A->LinesTitle    = Title;
+  A->LinesFrom     = From;
+  A->UnlockPresses = 0;
+  A->InfoList      = (LIST_STATE){.Focus = Focus, .Scroll = Focus};
+  A->Screen        = SCREEN_LINES;
+  A->Dirty         = TRUE;
 }
 
 VOID
@@ -529,6 +510,10 @@ AppRows (
   CONST SETTINGS_CAPS *Caps     = &A->Caps;
   UINTN                Count    = 0;
 
+  if (A->Screen == SCREEN_DEVELOPER_OPTIONS) {
+    return DeveloperOptionsRows (A, Rows);
+  }
+
 #define ADD_HEADER(Title) (Rows[Count++] = (ROW){.Header = (Title)})
 #define ADD_ITEM(Id)      (Rows[Count++] = (ROW){.Item = (Id)})
   ADD_HEADER (gStrings->SectionBoot);
@@ -558,20 +543,12 @@ AppRows (
   ADD_ITEM (ITEM_ROTATION);
   ADD_ITEM (ITEM_REVERSE_VOLUME);
   ADD_ITEM (ITEM_CUSTOM_LOGO);
-  if (!Caps->Embedded) {
-    ADD_ITEM (ITEM_TIMEOUT);
-  }
   if (SettingsModelVisible (Settings)) {
     ADD_ITEM (ITEM_MODEL);
   }
-  // Experiments, in debug builds only.
-  if (A->Debug && Caps->Embedded) {
-    ADD_HEADER (gStrings->SectionDebug);
-    if (Caps->UsbHost) {
-      ADD_ITEM (ITEM_USB_LIVE);
-    }
-    ADD_ITEM (ITEM_QUIESCE);
-    ADD_ITEM (ITEM_PANEL_LINES);
+  // Last in the settings, once unlocked from Device info.
+  if (Settings->DeveloperOptions) {
+    ADD_ITEM (ITEM_DEVELOPER_OPTIONS);
   }
   ADD_HEADER (gStrings->SectionSystem);
   if (Caps->Log) {
@@ -770,18 +747,6 @@ AppItemView (
       Value, Cap, Settings->CustomLogo ? gStrings->On : gStrings->Off
     );
     break;
-  case ITEM_TIMEOUT:
-    View->Icon  = ICON_CLOCK;
-    View->Label = gStrings->Timeout;
-    if (Settings->MenuTimeoutS == 0) {
-      AsciiStrCopy (Value, Cap, gStrings->Off);
-    } else {
-      CHAR8        Seconds[4];
-      CONST CHAR8 *Arg = Seconds;
-      AsciiStrFromU64 (Seconds, sizeof (Seconds), Settings->MenuTimeoutS);
-      LangFill (Value, Cap, gStrings->Seconds, &Arg, 1);
-    }
-    break;
   case ITEM_MODEL:
     View->Icon  = ICON_GAMEPAD;
     View->Label = gStrings->DeviceModel;
@@ -806,21 +771,16 @@ AppItemView (
     View->Label    = gStrings->Log;
     View->Trailing = TRAILING_NAVIGATE;
     break;
+  case ITEM_DEVELOPER_OPTIONS:
   case ITEM_USB_LIVE:
   case ITEM_QUIESCE:
-  case ITEM_PANEL_LINES: {
-    BOOLEAN On  = Item == ITEM_USB_LIVE  ? A->Experiments.UsbLive
-                  : Item == ITEM_QUIESCE ? A->Experiments.Quiesce
-                                         : A->Experiments.PanelLinesOff;
-    View->Icon  = Item == ITEM_USB_LIVE  ? ICON_USB
-                  : Item == ITEM_QUIESCE ? ICON_MONITOR_OFF
-                                         : ICON_PLUG;
-    View->Label = Item == ITEM_USB_LIVE  ? gStrings->DbgUsbLive
-                  : Item == ITEM_QUIESCE ? gStrings->DbgQuiesce
-                                         : gStrings->DbgPanelLines;
-    AsciiStrCopy (Value, Cap, On ? gStrings->On : gStrings->Off);
+  case ITEM_PANEL_LINES:
+  case ITEM_BOOT_LOG:
+  case ITEM_SD_DIAGNOSTICS:
+  case ITEM_RESET_SETTINGS:
+  case ITEM_DEVELOPER_OPTIONS_BACK:
+    DeveloperOptionsItemView (A, Item, View);
     break;
-  }
   case ITEM_POWER_OFF:
     View->Icon     = ICON_POWER;
     View->Label    = gStrings->PowerOff;
@@ -838,8 +798,7 @@ Activate (
   IN ITEM     Item
 )
 {
-  SETTINGS    *Settings    = &A->Settings;
-  EXPERIMENTS *Experiments = &A->Experiments;
+  SETTINGS *Settings = &A->Settings;
 
   switch (Item) {
   case ITEM_START:
@@ -892,9 +851,6 @@ Activate (
   case ITEM_CUSTOM_LOGO:
     Settings->CustomLogo = !Settings->CustomLogo;
     return Command (COMMAND_SAVE_SETTINGS, 0);
-  case ITEM_TIMEOUT:
-    SettingsNextTimeout (Settings);
-    return Command (COMMAND_SAVE_SETTINGS, 0);
   case ITEM_MODEL:
     A->Screen = SCREEN_SCANNING;
     return Command (COMMAND_SCAN_MODELS, 0);
@@ -907,27 +863,23 @@ Activate (
     return Command (COMMAND_DEVICE_INFO, 0);
   case ITEM_LOG:
     return Command (COMMAND_LOG, 0);
+  case ITEM_DEVELOPER_OPTIONS:
   case ITEM_USB_LIVE:
   case ITEM_QUIESCE:
-  case ITEM_PANEL_LINES: {
-    COMMAND Save = Command (COMMAND_SAVE_EXPERIMENTS, 0);
-    if (Item == ITEM_USB_LIVE) {
-      Experiments->UsbLive = !Experiments->UsbLive;
-    } else if (Item == ITEM_QUIESCE) {
-      Experiments->Quiesce = !Experiments->Quiesce;
-    } else {
-      Experiments->PanelLinesOff = !Experiments->PanelLinesOff;
-    }
-    Save.Experiments = *Experiments;
-    return Save;
-  }
+  case ITEM_PANEL_LINES:
+  case ITEM_BOOT_LOG:
+  case ITEM_SD_DIAGNOSTICS:
+  case ITEM_RESET_SETTINGS:
+  case ITEM_DEVELOPER_OPTIONS_BACK:
+    return DeveloperOptionsActivate (A, Item);
   case ITEM_POWER_OFF:
     return Command (COMMAND_POWER_OFF, 0);
   }
   return None ();
 }
 
-// Up and down move the focus through the items, wrapping around.
+// Up and down move the focus through the items, wrapping around. Back
+// leaves the developer options.
 STATIC COMMAND
 MenuInput (
   IN OUT APP *A,
@@ -952,6 +904,9 @@ MenuInput (
     A->FocusItem = Items[(Focused + 1) % Count];
     return None ();
   case INPUT_BACK:
+    if (A->Screen == SCREEN_DEVELOPER_OPTIONS) {
+      DeveloperOptionsLeave (A);
+    }
     return None ();
   case INPUT_SELECT:
     return Activate (A, Items[Focused]);
@@ -959,8 +914,23 @@ MenuInput (
   return None ();
 }
 
+// Returns TRUE if Select on the focused line counts towards unlocking the
+// developer options: the bootloader version in Device info, while they are
+// locked.
+STATIC BOOLEAN
+UnlockLine (IN CONST APP *A)
+{
+  UINTN Focus = A->InfoList.Focus;
+
+  // Device info labels its lines with the gStrings pointers themselves.
+  return A->LinesFrom == ITEM_DEVICE_INFO && !A->Settings.DeveloperOptions &&
+         Focus < A->LineCount &&
+         A->Lines[Focus].Label == gStrings->InfoBootloader;
+}
+
 // Up and down move through the lines, scrolling the list. Select and Back
-// go back to the menu.
+// go back to the menu, except that Select on the bootloader version counts
+// towards unlocking the developer options while they are locked.
 STATIC COMMAND
 InfoInput (
   IN OUT APP *A,
@@ -969,6 +939,16 @@ InfoInput (
 {
   UINTN Count = A->LineCount ? A->LineCount : 1;
   UINTN Focus = A->InfoList.Focus;
+
+  if (Input == INPUT_SELECT && UnlockLine (A)) {
+    CHAR8   Toast[sizeof (A->Toast)];
+    COMMAND Save = DeveloperOptionsUnlockPress (A, Toast, sizeof (Toast));
+
+    if (Toast[0]) {
+      ShowToast (A, Toast);
+    }
+    return Save;
+  }
 
   switch (Input) {
   case INPUT_UP:
@@ -1016,8 +996,9 @@ ModelsInput (
   case INPUT_SELECT:
     if (Focus == 0) {
       // No model, so the OS gets the firmware's devicetree untouched.
-      A->Settings.Model[0]      = 0;
-      A->Settings.ModelRotation = ROTATION_NONE;
+      A->Settings.Model[0]           = 0;
+      A->Settings.ModelRotation      = ROTATION_NONE;
+      A->Settings.ModelRotationKnown = FALSE;
       LeaveModels (A);
       ShowToast (A, gStrings->ToastFirmwareDt);
       return Command (COMMAND_SAVE_SETTINGS, 0);
@@ -1028,7 +1009,8 @@ ModelsInput (
       CHAR8        Message[160];
 
       AsciiStrCopy (A->Settings.Model, sizeof (A->Settings.Model), Model->Name);
-      A->Settings.ModelRotation = Model->Rotation;
+      A->Settings.ModelRotation      = Model->Rotation;
+      A->Settings.ModelRotationKnown = TRUE;
       LeaveModels (A);
       LangFill (Message, sizeof (Message), gStrings->ToastModelSet, &Arg, 1);
       ShowToast (A, Message);
@@ -1171,6 +1153,7 @@ AppInput (
   }
   switch (A->Screen) {
   case SCREEN_MENU:
+  case SCREEN_DEVELOPER_OPTIONS:
     return MenuInput (A, Input);
   case SCREEN_MODELS:
     return ModelsInput (A, Input);

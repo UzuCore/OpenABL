@@ -21,7 +21,8 @@
 
 #define LANG_ID_ENTRY(Id, Symbol) Id,
 
-// The stored values of the Language setting, from LANG_LIST.
+// The languages, in LANG_LIST order. Only held in memory: the Language
+// setting is stored as the language's Symbol.
 typedef enum { LANG_LIST (LANG_ID_ENTRY) LANG_COUNT } LANG_ID;
 
 // Only pointers to strings, so LangSet can fill a language's gaps one by
@@ -29,8 +30,6 @@ typedef enum { LANG_LIST (LANG_ID_ENTRY) LANG_COUNT } LANG_ID;
 typedef struct _LANG_STRINGS {
   // The language's name in itself, for the Language setting. Required.
   CONST CHAR8 *Name;
-  // Lowercase BCP 47 tag, for the simulator's --lang. Required.
-  CONST CHAR8 *Code;
   CONST CHAR8 *Language;
   CONST CHAR8 *LanguageExplain;
   CONST CHAR8 *SectionBoot;
@@ -63,8 +62,6 @@ typedef struct _LANG_STRINGS {
   CONST CHAR8 *ReverseVolume;
   CONST CHAR8 *CustomLogo;
   CONST CHAR8 *RotationAuto;
-  CONST CHAR8 *Timeout;
-  CONST CHAR8 *Seconds;
   CONST CHAR8 *DeviceModel;
   CONST CHAR8 *NotSet;
   CONST CHAR8 *UninstallCfw;
@@ -86,10 +83,17 @@ typedef struct _LANG_STRINGS {
   CONST CHAR8 *InfoPanel;
   CONST CHAR8 *DeviceInfo;
   CONST CHAR8 *Log;
-  CONST CHAR8 *SectionDebug;
-  CONST CHAR8 *DbgUsbLive;
-  CONST CHAR8 *DbgQuiesce;
-  CONST CHAR8 *DbgPanelLines;
+  CONST CHAR8 *DeveloperOptions;
+  CONST CHAR8 *DeveloperOptionsUsbLive;
+  CONST CHAR8 *DeveloperOptionsQuiesce;
+  CONST CHAR8 *DeveloperOptionsPanelLines;
+  CONST CHAR8 *DeveloperOptionsBootLog;
+  CONST CHAR8 *DeveloperOptionsSdDiagnostics;
+  CONST CHAR8 *DeveloperOptionsReset;
+  CONST CHAR8 *DeveloperOptionsResetFailed;
+  CONST CHAR8 *DeveloperOptionsStepsAway;
+  CONST CHAR8 *DeveloperOptionsStepAway;
+  CONST CHAR8 *DeveloperOptionsUnlocked;
   CONST CHAR8 *InfoChip;
   CONST CHAR8 *InfoPlatform;
   CONST CHAR8 *InfoPmic;
@@ -185,9 +189,10 @@ LangSet (IN UINT8 Lang);
 CONST CHAR8 *
 LangName (IN UINT8 Lang);
 
-// Returns the language whose Code is Code, or LANG_COUNT if none is.
+// Returns the language whose LANG_LIST Symbol is Symbol ("ZhHans"), or
+// LANG_COUNT if none is.
 UINT8
-LangFromCode (IN CONST CHAR8 *Code);
+LangFromSymbol (IN CONST CHAR8 *Symbol);
 
 // Writes Template to Out with Args filled in. {} takes the next argument
 // and {0} or {1} a given one, so word order can differ between languages.

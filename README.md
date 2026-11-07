@@ -61,6 +61,7 @@ fastboot flash abl_b abl_signed-SM8550.elf
 | 볼륨 +/- 반전 | 볼륨 높임·낮춤 버튼의 메뉴 이동 방향을 서로 바꿉니다. |
 | 사용자 부팅 로고 | 부팅할 때 제조사 로고 대신 `\logo` 폴더의 이미지를 표시합니다(아래 설명 참고). 이미지가 없으면 OpenABL 로고를 표시합니다. 기본값은 끄기입니다. |
 | 기기 모델 | 부팅 위치에 있는 드라이브의 `\boot\grub`, `\dtbs`, `\dtbs\qcom`, `\dtb`, `\dtb\qcom` 폴더의 `.dtb` 파일 중에서 Linux에 사용할 장치 트리를 선택합니다. 부팅 항목에 지정된 장치 트리가 우선합니다. *펌웨어 기본값*은 펌웨어의 장치 트리를 사용합니다. |
+| 개발자 옵션 | 기기 정보에서 *부트로더* 항목을 일곱 번 선택하면 잠금 해제됩니다. USB 호스트 실시간 시작(지원 기기), 부팅 인계 시 화면 끄기, 패널 백라이트와 전원 끄기, 화면에 부팅 로그 표시, SD 카드 진단을 설정할 수 있습니다. *OpenABL 설정 초기화*는 misc에 저장된 설정과 기기 모델을 모두 지운 뒤 기본값으로 부트로더를 재시작합니다. 모든 옵션은 기본적으로 꺼져 있습니다. |
 | 로그 | ABL과 메뉴의 로그를 표시합니다. |
 | 기기 정보 | 칩, 플랫폼, 전원 관리 칩(PMIC), 메모리, 저장소, 패널 및 펌웨어 버전을 표시합니다. |
 | CFW 제거 | 확인을 거쳐 내부 저장소에 설치된 Linux를 제거합니다. 내부에 Linux가 설치되어 있을 때만 표시됩니다. |
@@ -135,9 +136,8 @@ systemd-boot와 마찬가지로 `LoaderConfigTimeout`(`bootctl set-timeout`)이 
 **Android**는 Qualcomm ABL과 마찬가지로 기기 자체의 부팅 파티션에서 시작하며,
 검증 부팅과 복구 모드도 지원합니다.
 
-메뉴는 영어, 중국어 간체, 한국어를 지원합니다. 언어 목록에서 한국어를 선택하세요.
-언어 ID는 업스트림 순서를 유지하며 영어 0, 중국어 간체 1, 한국어 2입니다.
-기존 한국어 대체 빌드에서 언어 값 1을 저장했다면, 업데이트 후 한국어를 한 번 다시 선택하세요.
+메뉴는 영어, 프랑스어, 중국어 간체, 한국어를 지원합니다. 언어 목록은 이 순서이며
+한국어가 마지막입니다. 메뉴 언어 설정은 숫자 대신 `En`, `Fr`, `ZhHans`, `Ko` 심볼로 저장됩니다.
 
 ## 빌드
 
@@ -160,7 +160,6 @@ OTA 업데이트 후 반대쪽 슬롯에 다시 기록해 유지하는 addon.d �
 | 옵션 | 설명 |
 |---|---|
 | `--no-standard-boot` | 표준 Linux 부팅 기능을 제외하고 기본 EFI 부팅 파일만 사용합니다. |
-| `--debug` | 메뉴에 디버그 항목이 추가된 디버그 빌드를 생성합니다. |
 | `--clean` | 각 칩셋을 처음부터 다시 빌드합니다. |
 
 첫 빌드에서는 CodeLinaro의 Qualcomm ABL 소스(tianocore edk2,
@@ -177,9 +176,10 @@ OTA 업데이트 후 반대쪽 슬롯에 다시 기록해 유지하는 addon.d �
 make FEATURES=standard-boot,card-logo
 ```
 
-**언어 추가:** `Ui/Lang/`의 `En.c`, `ZhHans.c`, `Ko.c`에 언어별 문자열이 있습니다.
-새 언어는 `En.c`를 복사해 번역한 뒤 `Ui/Lang/Languages.h`의 목록 끝에 추가합니다.
-번역하지 않은 문자열은 영어로 표시됩니다.
+**언어 추가:** 메뉴 문자열은 `Ui/Lang/`의 언어별 파일에 있습니다
+(`En.c`, `Fr.c`, `ZhHans.c`, `Ko.c`). 새 언어는 `En.c`를 복사해 번역한 뒤
+`Ui/Lang/Languages.h` 목록에 추가합니다. 번역하지 않은 문자열은 영어로 표시됩니다.
+시뮬레이터에서는 `--lang`과 `Languages.h`에 지정한 언어 심볼을 사용합니다.
 
 기기에 플래시하지 않고 한국어 메뉴를 미리 보려면 다음을 실행하세요.
 
@@ -187,19 +187,16 @@ make FEATURES=standard-boot,card-logo
 Scripts/fetch.sh microui
 make sim
 mkdir -p build/screens-ko
-build/sim/openabl-menu-sim --lang ko --out build/screens-ko
+build/sim/openabl-menu-sim --lang Ko --out build/screens-ko
 ```
 
-GitHub Actions(`.github/workflows/build.yml`)는 `v*` 태그를 푸시하면 모든 칩셋을 빌드하고
-이미지를 해당 태그의 릴리즈에 업로드합니다. 함께 제공되는 `openabl-<TAG>-source.tar.xz`에는
-이 저장소와 빌드에 필요한 외부 소스가 포함되어 있어, `./build.sh`를 실행하면 소스를
-다시 내려받지 않고 빌드할 수 있습니다. 워크플로를 수동 실행하면 태그와 일반·디버그 빌드를
-선택할 수 있습니다. 디버그 빌드는 별도의 `debug-<TAG>` 사전 릴리즈로 배포되며,
-이미지 파일명은 `-debug.elf`로 끝납니다. 각 빌드는 칩셋별 폴더에 이미지와 `.sha256`을
-담은 `openabl-<TAG>.tar.gz`(디버그 빌드는 `-debug.tar.gz`)도 업로드합니다.
-Package 워크플로로 기존 릴리즈의 통합 압축파일을 만들 수도 있습니다.
-CI가 내려받은 소스는 `sources` 사전 릴리즈에 보관하며,
-`Scripts/fetch.sh`에 고정된 소스 버전이 바뀔 때만 다시 내려받습니다.
+GitHub Actions (`.github/workflows/build.yml`)는 `v*` 태그를 푸시하면 모든 칩셋을 빌드해
+이미지를 해당 태그의 릴리즈에 업로드합니다. `openabl-<TAG>-source.tar.xz`에는 이 저장소와
+빌드에 필요한 외부 소스가 포함되어 있어, `./build.sh` 실행 시 소스를 다시 내려받지 않습니다.
+워크플로를 수동 실행해 태그를 빌드할 수도 있습니다. 각 빌드는 칩셋별 폴더에 이미지와
+`.sha256` 파일을 담은 `openabl-<TAG>.tar.gz`도 업로드하며, Package 워크플로로 기존
+릴리즈의 통합 압축파일을 만들 수 있습니다. CI가 내려받은 소스는 `sources` 사전 릴리즈에
+보관하고, `Scripts/fetch.sh`의 고정 버전이 바뀔 때만 다시 내려받습니다.
 
 ## 향후 계획
 

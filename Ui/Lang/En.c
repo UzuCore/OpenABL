@@ -14,7 +14,6 @@
 
 CONST LANG_STRINGS gLangEn = {
   .Name              = "English",
-  .Code              = "en",
   .Language          = "Language",
   .LanguageExplain   = "The language the menu is shown in.",
   .SectionBoot       = "Boot",
@@ -47,8 +46,6 @@ CONST LANG_STRINGS gLangEn = {
   .Rotation          = "Display rotation",
   .CustomLogo        = "Custom boot logo",
   .RotationAuto      = "Auto ({}°)",
-  .Timeout           = "Menu timeout",
-  .Seconds           = "{} s",
   .DeviceModel       = "Device model",
   .NotSet            = "Not set",
   .UninstallCfw      = "Uninstall CFW",
@@ -70,10 +67,21 @@ CONST LANG_STRINGS gLangEn = {
   .InfoPanel         = "Panel",
   .DeviceInfo        = "Device info",
   .Log               = "Log",
-  .SectionDebug      = "Debug",
-  .DbgUsbLive        = "Live USB host",
-  .DbgQuiesce        = "Park display",
-  .DbgPanelLines     = "Panel lines off",
+
+  .DeveloperOptions              = "Developer options",
+  .DeveloperOptionsUsbLive       = "Live USB host",
+  .DeveloperOptionsQuiesce       = "Park display",
+  .DeveloperOptionsPanelLines    = "Panel lines off",
+  .DeveloperOptionsBootLog       = "Boot log on screen",
+  .DeveloperOptionsSdDiagnostics = "SD card diagnostics",
+  .DeveloperOptionsReset         = "Reset OpenABL settings",
+  .DeveloperOptionsResetFailed   = "The settings couldn't be reset",
+  .DeveloperOptionsStepsAway     =
+    "You are now {} steps away from unlocking Developer options",
+  .DeveloperOptionsStepAway      =
+    "You are now 1 step away from unlocking Developer options",
+  .DeveloperOptionsUnlocked      = "Developer options are now unlocked!",
+
   .InfoChip          = "Chip",
   .InfoPlatform      = "Platform",
   .InfoPmic          = "PMIC",

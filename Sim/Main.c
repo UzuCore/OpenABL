@@ -6,13 +6,14 @@
 /**
   Main - renders the menu's screens to PNG on the host.
 
-    openabl-menu-sim [--out DIR] [--filter TEXT] [--lang en|zh-hans] [--check]
+    openabl-menu-sim [--out DIR] [--filter TEXT] [--lang En|Fr|ZhHans|Ko] [--check]
 
   For every panel and rotation it writes the main menu as the user sees it
   (*-view.png) and as the panel receives it (*-scanout.png, rotated). A few
   panel and rotation pairs also get every other screen. --check instead
   runs sessions of key presses and compares each frame with a full redraw
-  and with a freshly built view. --lang picks the menu's language.
+  and with a freshly built view. --lang picks the menu's language by its
+  Symbol in Ui/Lang/Languages.h.
 */
 
 #include <stdio.h>
@@ -272,7 +273,7 @@ SLongValues (
   SampleInfo (&Info);
   AsciiStrCopy (Info.Soc, sizeof (Info.Soc), "Dragonwing QCS8550");
   AppInit (A, &Settings, &Caps, &Info, SCHEME_HANDHELD, MENU_VERSION);
-  AppStart (A, Now, TRUE);
+  AppStart (A, Now);
 }
 
 STATIC VOID
@@ -522,9 +523,10 @@ Render (
   SettingsDefault (&Settings);
   Settings.Rotation = (UINT16)Degrees;
   AsciiStrCopy (Settings.Model, sizeof (Settings.Model), "Retroid Pocket 5");
-  Settings.ModelRotation = 270;
+  Settings.ModelRotation      = 270;
+  Settings.ModelRotationKnown = TRUE;
   MakeApp (&mApp, &Settings);
-  AppStart (&mApp, Now, TRUE);
+  AppStart (&mApp, Now);
   mScreens[Screen].Setup (&mApp, Now);
   AppSetPhysicalSize (&mApp, (UINT32)PanelW, (UINT32)PanelH);
 
@@ -897,7 +899,7 @@ Check (
   SettingsDefault (&Settings);
   Settings.Rotation = (UINT16)Degrees;
   MakeApp (&mApp, &Settings);
-  AppStart (&mApp, Now, TRUE);
+  AppStart (&mApp, Now);
   AppSetPhysicalSize (&mApp, (UINT32)PanelW, (UINT32)PanelH);
   mPw              = PanelW;
   UINTN PixelCount = (UINTN)PanelW * PanelH;
@@ -1026,14 +1028,14 @@ main (
     } else if (!strcmp (Argv[Index], "--filter") && Index + 1 < Argc) {
       Filter = Argv[++Index];
     } else if (!strcmp (Argv[Index], "--lang") && Index + 1 < Argc &&
-               LangFromCode (Argv[Index + 1]) < LANG_COUNT) {
-      mLanguage = LangFromCode (Argv[++Index]);
+               LangFromSymbol (Argv[Index + 1]) < LANG_COUNT) {
+      mLanguage = LangFromSymbol (Argv[++Index]);
     } else if (!strcmp (Argv[Index], "--check")) {
       DoCheck = TRUE;
     } else {
       fprintf (
         stderr,
-        "usage: %s [--out DIR] [--filter TEXT] [--lang CODE] [--check]\n",
+        "usage: %s [--out DIR] [--filter TEXT] [--lang SYMBOL] [--check]\n",
         Argv[0]
       );
       return 2;

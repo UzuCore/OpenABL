@@ -26,7 +26,6 @@
 #include "Efi/Input.h"
 #include "Efi/Qcom.h"
 #include "Efi/Quirks.h"
-#include "Efi/Variables.h"
 #include "Efi/UsbHost.h"
 #include "Efi/Files.h"
 #ifdef OABL_SYSFONT
@@ -98,24 +97,23 @@ BootContextOf (
 {
   MENU_HOST_STATE State;
   SETTINGS_CAPS   Caps;
-  SETTINGS        Settings;
 
   if (EFI_ERROR (MenuHostState (Host, &State))) {
     return FALSE;
   }
   Caps = MenuCapsOf (&State);
-  MenuStoredSettings (&State, &Caps, &Settings);
   *Ctx = (MENU_BOOT_CONTEXT){
-    .Source        = Settings.BootSource,
+    .Host          = Host,
+    .Source        = State.Settings.BootSource,
     .CfwOnInternal = Caps.CfwOnInternal,
     .AltVolumeBoot = State.AltVolumeBoot,
-    .DevMode       = Settings.AblMode == ABL_MODE_VERBOSE,
+    .DevMode       = State.Settings.AblMode == ABL_MODE_VERBOSE,
     .VmEnabled     = (State.Flags & OPENABL_MENU_STATE_VM_ENABLED) != 0,
+    .Rotation      = State.Settings.Rotation,
+    .ModelRotation = State.Settings.ModelRotation,
+    .CustomLogo    = State.Settings.CustomLogo,
   };
-  AsciiStrCopy (Ctx->Model, sizeof (Ctx->Model), Settings.Model);
-  MenuLoadPrefs (
-    Settings.Model, &Ctx->Rotation, &Ctx->ModelRotation, &Settings.Language
-  );
+  AsciiStrCopy (Ctx->Model, sizeof (Ctx->Model), State.Settings.Model);
   AsciiStrCopy (Ctx->Version, sizeof (Ctx->Version), MENU_VERSION);
   if (State.Version[0]) {
     CHAR8 *Version = MenuHostText (State.Version, sizeof (State.Version));
@@ -144,8 +142,9 @@ MenuBootVolumes (
   *Count   = Handles.Count;
 }
 
-// Installs the model's devicetree and reclaims memory just before an image
-// starts. If it returns, ReturnedToMenu reserves XBL's staging region again.
+// Sets up Keymaster, installs the model's devicetree and reclaims memory
+// just before an image starts. If it returns, ReturnedToMenu reserves XBL's
+// staging region again.
 STATIC VOID
 HandoverBefore (
   IN CONST MENU_BOOT_CONTEXT *Ctx,
@@ -162,6 +161,9 @@ HandoverBefore (
     .Version       = Ctx->Version,
   };
 
+  // Lets Linux use Android's storage keys. Once per boot; the ABL skips it
+  // on a locked device, and a failure only costs that.
+  MenuHostAction (Ctx->Host, OPENABL_MENU_ACTION_NATIVE_KEYMASTER);
   HandoverPrepare (&Prepare, gMenuEfiLog);
 }
 
@@ -263,6 +265,7 @@ StandardBoot (
     .AfterReturn     = ReturnedToMenu,
   };
   BOOTER     Booter;
+  SETTINGS   Settings;
   CHAR8     *Why = NULL;
   EFI_STATUS Status;
 
@@ -280,6 +283,11 @@ StandardBoot (
     CHAR8 *Description = BooterDescribe (&Booter, &Booter.Plan.Items[Index]);
     MenuLog ("plan %llu: %s", (UINT64)Index, Description ? Description : "");
     FreePool (Description);
+  }
+  SettingsLoad (&Settings);
+  if (Settings.BootLog) {
+    // The boot's steps on screen too, to see where one stops.
+    SerialToScreen ();
   }
   switch (BooterBoot (&Booter, &BootHost, FALSE, 0, &Why)) {
   case BOOT_FAILURE_OK:
@@ -329,11 +337,10 @@ BootPick (
   CHAR8       Id[256] = {0};
   UINT16      Len;
 
-  if (!MenuVarGet (MENU_PICK_VAR, &Pick)) {
+  if (!SettingsFlagGet (SETTINGS_FLAG_BOOT_ENTRY_ONCE, &Pick)) {
     return FALSE;
   }
-  MenuVarPut (MENU_PICK_VAR, NULL, 0);
-  MenuFlush ();
+  SettingsFlagSet (SETTINGS_FLAG_BOOT_ENTRY_ONCE, NULL, 0);
   // A damaged pick matches nothing.
   if (GetLe16 (Pick.Data, Pick.Len, 0, &Len) && Pick.Len > 2u + Len &&
       Pick.Len - 2 - Len < sizeof (Id)) {
@@ -380,7 +387,7 @@ BootDrives (IN CONST MENU_HOST *Host)
   Files = FilesHost (&Ctx);
   // Draw our splash only with "Custom boot logo" on. Otherwise the
   // manufacturer's logo stays up.
-  if (MenuVarIs (SETTINGS_KEY_CUSTOM_LOGO, 1)) {
+  if (Ctx.CustomLogo) {
     MenuBootSplash (Host, &Ctx);
   } else {
     MenuLog ("splash: the manufacturer's logo kept (Custom boot logo is off)");
@@ -546,7 +553,7 @@ HoldLogUntilKey (IN CONST MENU_HOST_STATE *State)
 {
   INPUT_KEYS Keys = InputKeysNew ();
 
-  if (State->AblMode == 0) {
+  if (State->Settings.AblMode == ABL_MODE_SILENT) {
     return;
   }
   MenuLog ("Press any key to go to the menu");
@@ -600,7 +607,7 @@ StartHere (IN CONST MENU_HOST *Host)
   if (EFI_ERROR (MenuHostState (Host, &State))) {
     return MENU_START_RESULT_NOTHING;
   }
-  Usb = State.BootSource == MENU_HOST_BOOT_SOURCE_USB;
+  Usb = State.Settings.BootSource == BOOT_SOURCE_USB;
   MenuLog (
     "starting Linux in this boot%s", Usb ? ", fastboot paused for USB host" : ""
   );
@@ -677,12 +684,11 @@ ModelListRequested (IN CONST MENU_HOST_STATE *State)
   if (!(State->Flags & OPENABL_MENU_STATE_USB_HOST)) {
     return FALSE;
   }
-  if (!MenuVarIs (SETTINGS_KEY_SHOW_MODEL_MENU, 1)) {
+  if (!SettingsFlagIs (SETTINGS_FLAG_SHOW_MODEL_MENU, 1)) {
     return FALSE;
   }
-  MenuVarPut (SETTINGS_KEY_SHOW_MODEL_MENU, NULL, 0);
-  MenuFlush ();
-  if (State->BootSource != MENU_HOST_BOOT_SOURCE_USB) {
+  SettingsFlagSet (SETTINGS_FLAG_SHOW_MODEL_MENU, NULL, 0);
+  if (State->Settings.BootSource != BOOT_SOURCE_USB) {
     MenuLog ("model list asked for, but the boot source isn't USB: ignored");
     return FALSE;
   }
@@ -774,7 +780,7 @@ EntriesBeforeBoot (
   MENU_END          End;
 
   // A pick from before a restart, or an entry the OS asked for, boots now.
-  if (MenuVarGet (MENU_PICK_VAR, &Pick)) {
+  if (SettingsFlagGet (SETTINGS_FLAG_BOOT_ENTRY_ONCE, &Pick)) {
     BufferFree (&Pick);
     return TRUE;
   }
@@ -842,16 +848,17 @@ RunBoot (
   }
   // Qualcomm's charger check, if the charger screen is enabled.
   Charger =
-    State->OffmodeCharging != 0 &&
+    State->Settings.OffmodeCharging &&
     MenuHostAction (Host, OPENABL_MENU_ACTION_CHARGER_BOOT) == EFI_SUCCESS;
   if (Charger) {
     gMenuHostChargerBoot = TRUE;
     MenuLog ("powered on by the charger");
   }
   Alt = State->AltVolumeBoot;
-  if ((State->BootMode != 0 || Charger) && !Alt) {
-    BOOLEAN Recovery =
-      BootDecisionRecovery (&Start, QuirksAblSettings ().BootMode != 0);
+  if ((State->StartAndroid || Charger) && !Alt) {
+    BOOLEAN Recovery = BootDecisionRecovery (
+      &Start, State->Settings.BootMode == BOOT_MODE_ANDROID
+    );
     EFI_STATUS Status;
 
     MenuLog ("%s", Recovery ? "booting Android's recovery" : "booting Android");
@@ -865,7 +872,7 @@ RunBoot (
     return FastbootPath (Host, MENU_START_RESULT_ANDROID_FAILED);
   }
   Usb = (State->Flags & OPENABL_MENU_STATE_USB_HOST) &&
-        (State->BootSource == MENU_HOST_BOOT_SOURCE_USB || Alt);
+        (State->Settings.BootSource == BOOT_SOURCE_USB || Alt);
 #ifdef OABL_STANDARD_BOOT
   if (!EntriesBeforeBoot (Host, Usb)) {
     MenuLog ("Boot entries: Back, so the menu");
@@ -883,10 +890,9 @@ RunBoot (
   if (Usb) {
     // USB host was up, so fastboot needs a restart. Keep the reason across
     // it.
-    if (EFI_ERROR (MenuVarPut (SETTINGS_KEY_BOOT_FAILURE, &Result, 1))) {
+    if (EFI_ERROR (SettingsFlagSet (SETTINGS_FLAG_BOOT_FAILURE, &Result, 1))) {
       MenuLog ("the reason can't go across the restart");
     }
-    MenuFlush ();
     MenuHostAction (Host, OPENABL_MENU_ACTION_RESTART_BOOTLOADER);
   }
   return FastbootPath (Host, Result);
@@ -905,7 +911,7 @@ MainBoot (IN CONST MENU_HOST *Host)
 
   // Again, in case the early start couldn't read misc, before
   // MenuHostState reads the settings.
-  VariablesSetUp (gMenuEfiLog);
+  SettingsSetUp (gMenuEfiLog);
   if (EFI_ERROR (MenuHostState (Host, &State))) {
     return EFI_UNSUPPORTED;
   }
@@ -925,21 +931,20 @@ RunHere (IN OPENABL_STORAGE_PROTOCOL *This);
 STATIC EFI_STATUS
 Early (IN CONST MENU_HOST *Host)
 {
-  UINT32      Chip;
-  UINT32      Patched;
-  OABL_BUFFER Mode = {0};
-  EFI_STATUS  Status;
+  UINT32     Chip;
+  UINT32     Patched;
+  SETTINGS   Settings;
+  EFI_STATUS Status;
 
   // Read the settings from misc, setting the store up the first time with
   // the device model an older loader stored.
-  VariablesSetUp (gMenuEfiLog);
-  if (VariablesGet (SETTINGS_KEY_ABL_MODE, &Mode) && Mode.Len &&
-      Mode.Data[0] != 0) {
+  SettingsSetUp (gMenuEfiLog);
+  SettingsLoad (&Settings);
+  if (Settings.AblMode == ABL_MODE_VERBOSE) {
     AblConsoleShow ();
   }
-  BufferFree (&Mode);
   Chip    = QuirksChipId ();
-  Patched = QuirksSdccUhs (Chip, gMenuEfiLog);
+  Patched = QuirksSdccUhs (Chip, Settings.SdDiagnostics, gMenuEfiLog);
   MenuLog ("early: %u SdccDxe site(s) patched", Patched);
   if (!Resident ()) {
     MenuLog (

@@ -46,13 +46,6 @@ typedef enum {
   REBOOT_OTHER_SLOT,
 } REBOOT_TARGET;
 
-// Switches in the Debug section, which only debug builds have.
-typedef struct _EXPERIMENTS {
-  BOOLEAN UsbLive;
-  BOOLEAN Quiesce;
-  BOOLEAN PanelLinesOff;
-} EXPERIMENTS;
-
 typedef enum {
   COMMAND_NONE,
   COMMAND_BOOT,       // try everything bootable, in order
@@ -64,8 +57,8 @@ typedef enum {
   COMMAND_UNINSTALL_CFW,
   COMMAND_DEVICE_INFO,
   COMMAND_LOG,
-  COMMAND_SAVE_EXPERIMENTS, // saves Experiments
-  COMMAND_OPEN_MENU,        // leave Boot entries before a boot for the menu
+  COMMAND_OPEN_MENU,      // leave Boot entries before a boot for the menu
+  COMMAND_RESET_SETTINGS, // deletes every setting, then restarts
 } COMMAND_KIND;
 
 // Work for the platform. Run it after the next frame, so the screen
@@ -73,7 +66,6 @@ typedef enum {
 typedef struct _COMMAND {
   COMMAND_KIND Kind;
   INT32        Arg;
-  EXPERIMENTS  Experiments;
 } COMMAND;
 
 typedef enum {
@@ -143,14 +135,18 @@ typedef enum {
   ITEM_ROTATION,
   ITEM_REVERSE_VOLUME,
   ITEM_CUSTOM_LOGO,
-  ITEM_TIMEOUT,
   ITEM_MODEL,
   ITEM_UNINSTALL,
   ITEM_DEVICE_INFO,
   ITEM_LOG,
+  ITEM_DEVELOPER_OPTIONS, // opens the developer options
   ITEM_USB_LIVE,
   ITEM_QUIESCE,
   ITEM_PANEL_LINES,
+  ITEM_BOOT_LOG,
+  ITEM_SD_DIAGNOSTICS,
+  ITEM_RESET_SETTINGS,
+  ITEM_DEVELOPER_OPTIONS_BACK, // leaves the developer options
   ITEM_POWER_OFF,
 } ITEM;
 
@@ -168,13 +164,14 @@ typedef struct _ROW {
 typedef struct _ITEM_VIEW {
   ICON         Icon;
   CONST CHAR8 *Label;
-  CHAR8        Value[MODEL_LEN + 16]; // "" for none
+  CHAR8        Value[SETTINGS_MAX_MODEL_LEN + 16]; // "" for none
   TONE         Tone;
   TRAILING     Trailing;
 } ITEM_VIEW;
 
 typedef enum {
   SCREEN_MENU,
+  SCREEN_DEVELOPER_OPTIONS, // a list like the menu's
   SCREEN_SCANNING,
   SCREEN_MODELS,
   SCREEN_ENTRIES,
@@ -207,7 +204,7 @@ typedef struct _LIST_STATE {
 #define MAX_CFW_PARTS 8
 
 typedef struct _MODEL {
-  CHAR8  Name[MODEL_LEN];
+  CHAR8  Name[SETTINGS_MAX_MODEL_LEN];
   UINT16 Rotation;   // or ROTATION_NONE
   CHAR8  Source[64]; // where the devicetree was found
 } MODEL;
@@ -244,7 +241,6 @@ typedef struct _APP {
   DEVICE_INFO   Info;
   SCHEME        Scheme;
   CONST CHAR8  *Version;
-  BOOLEAN       Debug; // show the Debug section
   // The panel's size in pixels, before any rotation.
   UINT32 PhysicalW, PhysicalH;
   UINT16 FirmwareRotation;
@@ -283,8 +279,10 @@ typedef struct _APP {
   ITEM         LinesFrom;
   LIST_STATE   InfoList;
 
-  EXPERIMENTS Experiments;
-  INT32       Booting; // the entry picked from the list, or -1
+  LIST_STATE DeveloperOptionsList;
+  // Presses on the bootloader version since Device info opened.
+  UINT8 UnlockPresses;
+  INT32 Booting; // the entry picked from the list, or -1
 
   CHAR8   Toast[160];
   UINT64  ToastUntil; // 0 for no toast
@@ -314,14 +312,11 @@ AppInit (
   IN CONST CHAR8         *Version
 );
 
-// Decides what happens at power-on. With ForceMenu (a key held, or a
-// restart into the menu) the menu stays. Otherwise it counts down the menu
-// timeout, or boots at once if the timeout is 0.
-COMMAND
+// Opens the menu at power-on.
+VOID
 AppStart (
   IN OUT APP *A,
-  IN UINT64   Now,
-  IN BOOLEAN  ForceMenu
+  IN UINT64   Now
 );
 
 // Opens Boot entries before a boot, with the default first. With TimeoutS
@@ -386,12 +381,6 @@ VOID
 AppSetFirmwareRotation (
   IN OUT APP *A,
   IN UINT16   Degrees
-);
-
-VOID
-AppSetExperiments (
-  IN OUT APP           *A,
-  IN CONST EXPERIMENTS *Experiments
 );
 
 // Lists from the platform are copied, up to MAX_ENTRIES, MAX_MODELS and
@@ -479,7 +468,8 @@ AppDesiredRotation (IN CONST APP *A);
 
 // For the view
 
-// Fills Rows (MAX_ROWS long) with headers and items and returns the count.
+// Fills Rows (MAX_ROWS long) with the headers and items of the menu, or of
+// the developer options while they show, and returns the count.
 UINTN
 AppRows (
   IN CONST APP *A,

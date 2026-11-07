@@ -4,7 +4,7 @@
 #   https://github.com/OpenHandheldCollective
 # Builds the ABL with the menu program for one or more chipsets:
 #
-#   ./build.sh <chipset...|all> [--debug] [--no-standard-boot] [--clean]
+#   ./build.sh <chipset...|all> [--no-standard-boot] [--clean]
 #
 # Needs git and Docker. The sources are fetched by Scripts/fetch.sh; the
 # program (Makefile) and the ABL (Scripts/abl.sh) are built in the tianocore
@@ -24,7 +24,7 @@ WORKSPACE=/workspaces/LinuxLoader
 CHIPSETS="sdm845 sm4450 sm6115 sm6450 sm7675 sm8250 sm8475 sm8550 sm8650 sm8750"
 
 usage() {
-  echo "usage: ./build.sh <chipset...|all> [--debug] [--no-standard-boot] [--clean]" >&2
+  echo "usage: ./build.sh <chipset...|all> [--no-standard-boot] [--clean]" >&2
   echo "chipsets: $CHIPSETS" >&2
   exit 1
 }
@@ -50,10 +50,9 @@ chipset() {
   esac
 }
 
-DEBUG=0 STANDARD_BOOT=1 CLEAN=0 ASKED=()
+STANDARD_BOOT=1 CLEAN=0 ASKED=()
 while [ $# -gt 0 ]; do
   case $1 in
-    --debug) DEBUG=1 ;;
     --no-standard-boot) STANDARD_BOOT=0 ;;
     --clean) CLEAN=1 ;;
     -*) echo "unknown option $1" >&2; usage ;;
@@ -67,6 +66,18 @@ for soc in "${ASKED[@]}"; do chipset "$soc"; done
 
 command -v git > /dev/null || { echo "git is needed" >&2; exit 1; }
 docker info > /dev/null 2>&1 || { echo "Docker isn't running" >&2; exit 1; }
+
+# The container runs as root, so what it writes into the tree is owned by
+# root on a Linux host, which stops git clean and later builds. Hand
+# anything not owned by the invoking user back to them, using a container
+# because that needs root. Done before fetching too, which mends trees
+# from older builds.
+reclaim() {
+  [ -d build ] && [ -n "$(find build ! -user "$(id -u)" -print -quit 2> /dev/null)" ] || return 0
+  docker run --rm --platform linux/amd64 -v "$PWD/build:/build" --entrypoint find "$IMAGE" \
+    /build ! -uid "$(id -u)" -exec chown -h "$(id -u):$(id -g)" {} + || true
+}
+reclaim
 
 Scripts/fetch.sh
 mkdir -p build/out
@@ -106,7 +117,7 @@ for soc in "${ASKED[@]}"; do
   chipset "$soc"
   features=""
   [ "$STANDARD_BOOT" = 1 ] && features="standard-boot,card-logo${OWN_FULL:+,$OWN_FULL}"
-  for f in $OWN $([ "$DEBUG" = 1 ] && echo debug); do
+  for f in $OWN; do
     features="${features:+$features,}$f"
   done
   params=("${COMMON[@]}" "PVMFW_ENABLED=$PVMFW" "DISABLE_KERNEL_PROTOCOL=$((1 - KERNEL_PROTOCOL))")
@@ -164,6 +175,7 @@ for attempt in 1 2; do
   status=1
 done
 rm -f build/.silent
+reclaim
 
 echo "build: $((($(date +%s) - STARTED) / 60)) minutes"
 for soc in "${ASKED[@]}"; do

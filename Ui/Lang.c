@@ -56,14 +56,11 @@ LangName (IN UINT8 Lang)
 }
 
 UINT8
-LangFromCode (IN CONST CHAR8 *Code)
+LangFromSymbol (IN CONST CHAR8 *Symbol)
 {
-  for (UINT8 Lang = 0; Lang < LANG_COUNT; Lang++) {
-    if (mLangs[Lang]->Code && AsciiStrEq (mLangs[Lang]->Code, Code)) {
-      return Lang;
-    }
-  }
-  return LANG_COUNT;
+  return SettingsLanguageFromSymbol (
+    (CONST UINT8 *)Symbol, AsciiStrLen (Symbol)
+  );
 }
 
 VOID
