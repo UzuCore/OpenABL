@@ -35,6 +35,7 @@ CONST LANG_STRINGS gLangEn = {
   .VolumeUp          = "Volume up at boot",
   .VolLinuxExternal  = "Linux (external)",
   .VolRecovery       = "Recovery",
+  .ReverseVolume     = "Reverse volume buttons",
   .BootSource        = "Boot source",
   .Auto              = "Auto",
   .Internal          = "Internal",
@@ -42,7 +43,6 @@ CONST LANG_STRINGS gLangEn = {
   .Charging          = "Off-mode charging",
   .On                = "On",
   .Off               = "Off",
-  .ReverseVolume     = "Reverse volume buttons",
   .Rotation          = "Display rotation",
   .CustomLogo        = "Custom boot logo",
   .RotationAuto      = "Auto ({}°)",
@@ -115,6 +115,7 @@ CONST LANG_STRINGS gLangEn = {
   .ErrNoImageTitle = "Couldn't boot Linux",
   .ErrNoImageMsg   = "No bootable image was found on the selected boot source.",
   .ErrNoImageHint  = "Check the drive, or change Boot source in the menu.",
+  .ErrNoModelMsg   = "No device model is set.",
   .ErrLoadTitle    = "Couldn't start Linux",
   .ErrLoadHint =
     "Check the boot files on the drive, or change Boot source in the menu.",
@@ -126,6 +127,7 @@ CONST LANG_STRINGS gLangEn = {
   .ErrAndroidFailedHint  = "The Log screen says why. Check the Android "
                            "partitions, or set Boot mode to Linux.",
   .PressAnyKeyMenu       = "Press any key to return to the menu",
+  .PressAnyKeyModel      = "Press any key to choose the device model",
   .ConfirmUninstallTitle = "Uninstall CFW?",
   .ConfirmUninstallMsg   = "Erases these partitions, and all of Android's "
                            "data with them:",
@@ -163,7 +165,7 @@ CONST LANG_STRINGS gLangEn = {
   .UninstallReadBack    = "The partition table didn't read back as written.",
   .UninstallError       = "Something went wrong ({}).",
   .ErrWipeTitle         = "Linux is removed",
-  .WipeByHand       = "Android couldn't be made the boot mode. Set Boot Mode "
+  .WipeByHand       = "Android couldn't be made the boot mode. Set Boot mode "
                       "to Android, then choose Factory reset in recovery.",
   .Unknown          = "Unknown",
   .NotInserted      = "Not inserted",

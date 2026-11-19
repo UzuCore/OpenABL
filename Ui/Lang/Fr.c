@@ -4,7 +4,7 @@
  */
 
 /**
- Fr - Les chaînes du menu en français.
+  Fr - the menu's strings in French.
 */
 
 #include "Ui/Lang.h"
@@ -32,6 +32,7 @@ CONST LANG_STRINGS gLangFr = {
   .VolumeUp          = "Volume + au démarrage",
   .VolLinuxExternal  = "Linux (externe)",
   .VolRecovery       = "Récupération",
+  .ReverseVolume     = "Inverser les boutons de volume",
   .BootSource        = "Source de démarrage",
   .Auto              = "Auto",
   .Internal          = "Interne",
@@ -40,7 +41,6 @@ CONST LANG_STRINGS gLangFr = {
   .On                = "Activé",
   .Off               = "Désactivé",
   .Rotation          = "Rotation de l'écran",
-  .ReverseVolume     = "Inverser les boutons de volume",
   .CustomLogo        = "Logo de démarrage personnalisé",
   .RotationAuto      = "Auto ({}°)",
   .DeviceModel       = "Modèle de l'appareil",
@@ -66,9 +66,9 @@ CONST LANG_STRINGS gLangFr = {
   .Log               = "Journal",
 
   .DeveloperOptions              = "Options pour les développeurs",
-  .DeveloperOptionsUsbLive       = "Hôte USB actif",
+  .DeveloperOptionsUsbLive       = "Hôte USB sans redémarrage",
   .DeveloperOptionsQuiesce       = "Désactiver l'écran",
-  .DeveloperOptionsPanelLines    = "Désactiver les lignes de l'écran",
+  .DeveloperOptionsPanelLines    = "Couper l'alimentation de l'écran",
   .DeveloperOptionsBootLog       = "Journal de démarrage à l'écran",
   .DeveloperOptionsSdDiagnostics = "Diagnostic de la carte SD",
   .DeveloperOptionsReset         = "Réinitialiser les paramètres OpenABL",
@@ -118,6 +118,7 @@ CONST LANG_STRINGS gLangFr = {
                      "sélectionnée.",
   .ErrNoImageHint  = "Vérifiez le lecteur ou modifiez la source de démarrage "
                      "dans le menu.",
+  .ErrNoModelMsg   = "Aucun modèle d'appareil n'est défini.",
   .ErrLoadTitle    = "Impossible de démarrer Linux",
   .ErrLoadHint =
     "Vérifiez les fichiers d'amorçage sur le lecteur ou modifiez la source "
@@ -134,6 +135,8 @@ CONST LANG_STRINGS gLangFr = {
                            "Vérifiez les partitions Android ou sélectionnez "
                            "Linux comme mode de démarrage.",
   .PressAnyKeyMenu       = "Appuyez sur une touche pour revenir au menu",
+  .PressAnyKeyModel      = "Appuyez sur une touche pour choisir le modèle "
+                           "de l'appareil",
   .ConfirmUninstallTitle = "Désinstaller le CFW ?",
   .ConfirmUninstallMsg   = "Les partitions suivantes seront effacées, ainsi "
                            "que toutes les données Android qu'elles "

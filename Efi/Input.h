@@ -10,8 +10,8 @@
   are Back, and Enter, Space and SCAN_SUSPEND (the power key on Qualcomm
   keypads) are Select. Other keys are ignored. The input is reset after
   each read, so Qualcomm's keypad reports a held key again. Repeat and hold
-  timing is left to the UI's key decoder (Ui/Ui.h).
-  Up and Down are reversed when ReverseVolume is enabled.
+  timing is left to the UI's key decoder (Ui/Ui.h). Up and Down are
+  swapped, whichever key they came from, when Reverse is set.
 */
 
 #ifndef __EFI_INPUT_H__
@@ -23,8 +23,9 @@
 #include "Ui/Ui.h"
 
 typedef struct _INPUT_KEYS {
-  KEYS    Decoder;
-  BOOLEAN ReverseVolume;
+  KEYS Decoder;
+  // Swap Up and Down, as the Reverse volume buttons setting asks.
+  BOOLEAN Reverse;
 } INPUT_KEYS;
 
 typedef struct _INPUT_EVENTS OABL_VEC (INPUT) INPUT_EVENTS;
