@@ -79,7 +79,6 @@ typedef struct _SETTINGS {
   BOOLEAN CustomLogo;
   // The menu's language, a LANG_ID from Ui/Lang.h. Stored as its Symbol.
   UINT8 Language;
-  // Reverse menu navigation for the volume buttons, whatever the rotation.
 
   // The menu shows its Developer options item. Set by pressing the
   // bootloader version in Device info seven times.
