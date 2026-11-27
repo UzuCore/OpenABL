@@ -8,7 +8,8 @@
 
   A drive's models come from the .dtb files in \boot\grub (GRUB-based
   images), \dtbs, \dtbs\qcom, \dtb and \dtb\qcom (dtbloader,
-  distributions, U-Boot).
+  distributions, U-Boot), and from the .dtb and .dtbauto sections of the
+  UKIs in \EFI\Linux.
 */
 
 #ifndef __EFI_MODELS_H__
@@ -34,7 +35,9 @@ VOID
 ModelsFree (IN OUT SCANNED_MODELS *Models);
 
 // Reads the devicetree for Model on Fs: the first matching .dtb file in
-// those folders. FALSE if there is none. Caller frees Out with BufferFree.
+// those folders, else the first matching UKI section. Others are only read
+// as far as their root's model.
+// FALSE if there is none. Caller frees Out with BufferFree.
 BOOLEAN
 ModelsDevicetreeFor (
   IN EFI_HANDLE    Fs,
@@ -42,10 +45,12 @@ ModelsDevicetreeFor (
   OUT OABL_BUFFER *Out
 );
 
-// Adds the models found on Drives to Out, which starts empty, and sorts them
-// by name. When drives share a model, the first drive's devicetree wins.
-// Logs one line per folder that had any. Free Out with
-// ModelsFree.
+// Adds models for the running SoC (by Core/Soc's compatibles) found on
+// Drives to Out, which starts empty, and sorts them by name. SoCs without
+// compatibles show all models. When drives share a model, the first drive's
+// devicetree wins. A file is read whole only for a new model of this SoC;
+// the rest are only read as far as their root's model and compatible.
+// Logs one line per folder that had any. Free Out with ModelsFree.
 VOID
 ModelsScan (
   IN CONST EFI_HANDLE   *Drives,

@@ -196,6 +196,11 @@ STATIC struct {
   UINT8                  Data[SETTINGS_STORE_SIZE];
 } mStore;
 
+// SettingsSetUp created the store, and SettingsTakeNewStore hasn't said so
+// yet. Kept in memory only: the early start stays loaded, so the main boot
+// sees it.
+STATIC BOOLEAN mNewStore;
+
 // Finds misc's last 4 KiB. FALSE if there is no single misc or no room.
 STATIC BOOLEAN
 StoreLocate (VOID)
@@ -728,11 +733,21 @@ SettingsSetUp (IN LOG_SINK Log)
     return;
   }
   mStore.Fresh = FALSE;
+  mNewStore    = TRUE;
   LogLine (mLog, "settings: set up in misc");
   // The model is in misc now, so what older loaders left can go.
   if (Migrated) {
     MigrateModelCleanUp (mLog);
   }
+}
+
+BOOLEAN
+SettingsTakeNewStore (VOID)
+{
+  BOOLEAN New = mNewStore;
+
+  mNewStore = FALSE;
+  return New;
 }
 
 VOID
@@ -883,16 +898,26 @@ SettingsReset (VOID)
     LogLine (mLog, "settings reset failed: misc couldn't be read");
     return EFI_NOT_FOUND;
   }
-  SettingsStoreFormat (mStore.Data);
-  mStore.Dirty = TRUE;
-  Status       = StoreCommit ();
-  if (EFI_ERROR (Status)) {
-    LogPrint (mLog, "settings reset failed: %s", STATUS_TEXT (Status));
-    return Status;
+  // Zeros, not an empty store: StoreWrite would seal it.
+  ZeroMem (mStore.Data, SETTINGS_STORE_SIZE);
+  Status = UninstallWrite (
+    mStore.BlockIo, mStore.Lba, mStore.Data, SETTINGS_STORE_SIZE
+  );
+  if (Status == EFI_SUCCESS) {
+    Status = mStore.BlockIo->FlushBlocks (mStore.BlockIo);
   }
-  mStore.Fresh = FALSE;
-  LogLine (mLog, "settings reset: misc holds an empty store");
-  return EFI_SUCCESS;
+  if (Status != EFI_SUCCESS) {
+    LogPrint (mLog, "settings reset failed: %s", STATUS_TEXT (Status));
+  } else {
+    LogLine (mLog, "settings reset: misc's store is erased");
+  }
+  // Read misc back, so the copy matches it whether or not the write went
+  // through.
+  mStore.Loaded = FALSE;
+  mStore.Ready  = FALSE;
+  mStore.Dirty  = FALSE;
+  StoreLoad (mLog);
+  return Status;
 }
 
 // One-off flags

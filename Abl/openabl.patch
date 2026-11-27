@@ -899,7 +899,7 @@ index 975e656..51ffe92 100644
                          "powering down the display and controller\n"));
  
 diff --git a/QcomModulePkg/Library/FastbootLib/FastbootCmds.c b/QcomModulePkg/Library/FastbootLib/FastbootCmds.c
-index 1ca6796..80870a9 100644
+index 1ca6796..d1bc6e0 100644
 --- a/QcomModulePkg/Library/FastbootLib/FastbootCmds.c
 +++ b/QcomModulePkg/Library/FastbootLib/FastbootCmds.c
 @@ -153,6 +153,7 @@ STATIC FASTBOOT_VAR *Varlist;
@@ -910,7 +910,214 @@ index 1ca6796..80870a9 100644
  STATIC CHAR8 StrVariant[MAX_RSP_SIZE];
  STATIC CHAR8 StrBatteryVoltage[MAX_RSP_SIZE];
  STATIC CHAR8 StrBatterySocOk[MAX_RSP_SIZE];
-@@ -4048,7 +4049,8 @@ FastbootCommandSetup (IN VOID *Base, IN UINT64 Size)
+@@ -692,6 +693,10 @@ HandleChunkTypeRaw (sparse_header_t *sparse_header,
+   return EFI_SUCCESS;
+ }
+ 
++/* Most blocks one FILL write covers. Large zero runs in userdata images
++ * otherwise take one 4 KiB write each. */
++#define FILL_BUF_MAX_SIZE (16 * 1024 * 1024)
++
+ STATIC EFI_STATUS
+ HandleChunkTypeFill (sparse_header_t *sparse_header,
+         chunk_header_t *chunk_header,
+@@ -701,7 +706,10 @@ HandleChunkTypeFill (sparse_header_t *sparse_header,
+   UINT32 *FillBuf = NULL;
+   UINT32 FillVal;
+   EFI_STATUS Status = EFI_SUCCESS;
+-  UINT32 Temp;
++  UINT64 Temp;
++  UINT32 BufBlocks;
++  UINT32 Blocks;
++  UINT32 Left;
+ 
+   if (sparse_header == NULL ||
+       chunk_header == NULL ||
+@@ -717,46 +725,62 @@ HandleChunkTypeFill (sparse_header_t *sparse_header,
+     return EFI_INVALID_PARAMETER;
+   }
+ 
+-  FillBuf = AllocateZeroPool (sparse_header->blk_sz);
+-  if (!FillBuf) {
+-    DEBUG ((EFI_D_ERROR, "Malloc failed for: CHUNK_TYPE_FILL\n"));
+-    return EFI_OUT_OF_RESOURCES;
+-  }
+-
+   if (CHECK_ADD64 ((UINT64)*Image, sizeof (UINT32))) {
+     DEBUG ((EFI_D_ERROR,
+               "Integer overflow while adding Image and uint32\n"));
+-    Status = EFI_INVALID_PARAMETER;
+-    goto out;
++    return EFI_INVALID_PARAMETER;
+   }
+ 
+   if (SparseImgData->ImageEnd < (UINT64)*Image + sizeof (UINT32)) {
+     DEBUG ((EFI_D_ERROR,
+             "Buffer overread occured due to invalid sparse header\n"));
+-   Status = EFI_INVALID_PARAMETER;
+-   goto out;
++    return EFI_INVALID_PARAMETER;
++  }
++
++  /* Make sure the data does not exceed the partition size */
++  if (((UINT64)SparseImgData->TotalBlocks + chunk_header->chunk_sz) *
++       (UINT64)sparse_header->blk_sz >
++       SparseImgData->PartitionSize) {
++    DEBUG ((EFI_D_ERROR, "Chunk data size for fill type "
++                          "exceeds partition size\n"));
++    return EFI_VOLUME_FULL;
+   }
+ 
+   FillVal = *(UINT32 *)*Image;
+   *Image = (CHAR8 *)*Image + sizeof (UINT32);
+ 
+-  for (Temp = 0;
+-       Temp < (sparse_header->blk_sz / sizeof (FillVal));
+-       Temp++) {
+-    FillBuf[Temp] = FillVal;
+-  }
+-
+-  for (Temp = 0; Temp < chunk_header->chunk_sz; Temp++) {
+-    /* Make sure the data does not exceed the partition size */
+-    if ((UINT64)SparseImgData->TotalBlocks *
+-         (UINT64)sparse_header->blk_sz +
+-         sparse_header->blk_sz >
+-         SparseImgData->PartitionSize) {
+-      DEBUG ((EFI_D_ERROR, "Chunk data size for fill type "
+-                            "exceeds partition size\n"));
+-      Status = EFI_VOLUME_FULL;
+-      goto out;
++  if (chunk_header->chunk_sz == 0) {
++    return EFI_SUCCESS;
++  }
++
++  /* As many blocks as the chunk needs, up to FILL_BUF_MAX_SIZE; halved
++   * while the pool can't spare that much, down to one block. */
++  BufBlocks = MAX (FILL_BUF_MAX_SIZE / sparse_header->blk_sz, 1);
++  BufBlocks = MIN (BufBlocks, chunk_header->chunk_sz);
++  while (TRUE) {
++    FillBuf = AllocatePool ((UINTN)BufBlocks * sparse_header->blk_sz);
++    if (FillBuf || BufBlocks == 1) {
++      break;
+     }
++    BufBlocks /= 2;
++  }
++  if (!FillBuf) {
++    DEBUG ((EFI_D_ERROR, "Malloc failed for: CHUNK_TYPE_FILL\n"));
++    return EFI_OUT_OF_RESOURCES;
++  }
++
++  if (FillVal == 0) {
++    ZeroMem (FillBuf, (UINTN)BufBlocks * sparse_header->blk_sz);
++  } else {
++    for (Temp = 0;
++         Temp < ((UINT64)BufBlocks * sparse_header->blk_sz) / sizeof (FillVal);
++         Temp++) {
++      FillBuf[Temp] = FillVal;
++    }
++  }
++
++  for (Left = chunk_header->chunk_sz; Left > 0; Left -= Blocks) {
++    Blocks = MIN (Left, BufBlocks);
+ 
+     SparseImgData->WrittenBlockCount =
+       SparseImgData->TotalBlocks *
+@@ -764,22 +788,19 @@ HandleChunkTypeFill (sparse_header_t *sparse_header,
+     Status = WriteToDisk (SparseImgData->BlockIo,
+                           SparseImgData->Handle,
+                           (VOID *)FillBuf,
+-                          sparse_header->blk_sz,
++                          (UINT64)Blocks * sparse_header->blk_sz,
+                           SparseImgData->WrittenBlockCount);
+     if (EFI_ERROR (Status)) {
+       DEBUG ((EFI_D_ERROR, "Flash write failure for FILL Chunk\n"));
+-
+-    goto out;
++      goto out;
+     }
+ 
+-    SparseImgData->TotalBlocks++;
++    SparseImgData->TotalBlocks += Blocks;
+   }
+ 
+   out:
+-    if (FillBuf) {
+     FreePool (FillBuf);
+     FillBuf = NULL;
+-    }
+     return Status;
+ }
+ 
+@@ -1431,7 +1452,8 @@ SparseImgFlashThread (VOID* Arg)
+   IsFlashComplete = FALSE;
+   FlashSplitNeeded = TRUE;
+ 
+-  HandleSparseImgFlash (ThreadFlashInfo->PartitionName,
++  /* AcceptCmd reports a failure on the next flash or download. */
++  FlashResult = HandleSparseImgFlash (ThreadFlashInfo->PartitionName,
+           ThreadFlashInfo->PartitionSize,
+           ThreadFlashInfo->FlashDataBuffer,
+           ThreadFlashInfo->FlashNumDataBytes);
+@@ -1980,6 +2002,9 @@ CmdFlash (IN CONST CHAR8 *arg, IN VOID *data, IN UINT32 sz)
+                 PartitionName, ARRAY_SIZE (PartitionName));
+         ThreadFlashInfo->PartitionSize = ARRAY_SIZE (PartitionName);
+ 
++        /* Before the thread runs, so AcceptCmd holds back the next command
++         * from the start. */
++        IsFlashComplete = FALSE;
+         Status = CreateSparseImgFlashThread (ThreadFlashInfo);
+       } else {
+         IsFlashComplete = FALSE;
+@@ -3583,6 +3608,29 @@ AcceptCmdHandler (IN EFI_EVENT Event, IN VOID *Context)
+   AcceptCmdInfo = NULL;
+ }
+ 
++/* A command held back while a threaded flash writes. */
++STATIC CHAR8 DeferredCmd[MAX_FASTBOOT_COMMAND_SIZE + 1];
++STATIC UINT64 DeferredCmdSize;
++STATIC BOOLEAN HasDeferredCmd = FALSE;
++
++/* Runs the held back command once the write ends. */
++VOID
++FastbootRunDeferredCmd (VOID)
++{
++  if (!HasDeferredCmd || !IsFlashComplete) {
++    return;
++  }
++  HasDeferredCmd = FALSE;
++  AcceptCmd (DeferredCmdSize, DeferredCmd);
++}
++
++/* Drops a held back command, for stopping fastboot. */
++VOID
++FastbootDropDeferredCmd (VOID)
++{
++  HasDeferredCmd = FALSE;
++}
++
+ STATIC VOID
+ AcceptCmd (IN UINT64 Size, IN CHAR8 *Data)
+ {
+@@ -3606,6 +3654,18 @@ AcceptCmd (IN UINT64 Size, IN CHAR8 *Data)
+     /* Wait for flash finished before next command */
+     if (AsciiStrnCmp (Data, "download", AsciiStrLen ("download"))) {
+       StopUsbTimer ();
++      if (!IsFlashComplete &&
++          IsUseMThreadParallel ()) {
++        /* Waiting on LockFlash here would stall the caller's loop, and the
++         * menu with it, until the write ends. FastbootRunDeferredCmd runs
++         * the command then. */
++        if (Size > MAX_FASTBOOT_COMMAND_SIZE)
++          Size = MAX_FASTBOOT_COMMAND_SIZE;
++        gBS->CopyMem (DeferredCmd, Data, Size);
++        DeferredCmdSize = Size;
++        HasDeferredCmd = TRUE;
++        return;
++      }
+       if (!IsFlashComplete &&
+           !IsUseMThreadParallel ()) {
+         Status = AcceptCmdTimerInit (Size, Data);
+@@ -4048,7 +4108,8 @@ FastbootCommandSetup (IN VOID *Base, IN UINT64 Size)
    AsciiSPrint (EraseBlkSizeStr, sizeof (EraseBlkSizeStr), " 0x%x", BlkSize);
    FastbootPublishVar ("erase-block-size", EraseBlkSizeStr);
    GetDevInfo (&DevInfoPtr);
@@ -920,8 +1127,19 @@ index 1ca6796..80870a9 100644
    FastbootPublishVar ("version-baseband", DevInfoPtr->radio_version);
    BatterySocOk = TargetBatterySocOk (&BatteryVoltage);
    AsciiSPrint (StrBatteryVoltage, sizeof (StrBatteryVoltage), "%d",
+diff --git a/QcomModulePkg/Library/FastbootLib/FastbootCmds.h b/QcomModulePkg/Library/FastbootLib/FastbootCmds.h
+index f4d3522..552dd44 100644
+--- a/QcomModulePkg/Library/FastbootLib/FastbootCmds.h
++++ b/QcomModulePkg/Library/FastbootLib/FastbootCmds.h
+@@ -234,4 +234,6 @@ BOOLEAN IsDisableParallelDownloadFlash (VOID);
+ BOOLEAN IsUseMThreadParallel (VOID);
+ VOID ThreadSleep (TimeDuration Delay);
+ VOID WaitForFlashFinished (VOID);
++VOID FastbootRunDeferredCmd (VOID);
++VOID FastbootDropDeferredCmd (VOID);
+ #endif
 diff --git a/QcomModulePkg/Library/FastbootLib/FastbootMain.c b/QcomModulePkg/Library/FastbootLib/FastbootMain.c
-index 05554a6..11d8624 100755
+index 05554a6..471df0b 100755
 --- a/QcomModulePkg/Library/FastbootLib/FastbootMain.c
 +++ b/QcomModulePkg/Library/FastbootLib/FastbootMain.c
 @@ -160,7 +160,12 @@ DummyNotify (IN EFI_EVENT Event, IN VOID *Context)
@@ -989,7 +1207,7 @@ index 05554a6..11d8624 100755
    /* Look for Event from Usb device protocol */
    Fbd.UsbDeviceProtocol->HandleEvent (&Msg, &PayloadSize, &Payload);
    if (UsbDeviceEventDeviceStateChange == Msg) {
-@@ -392,35 +413,104 @@ EFI_STATUS HandleUsbEvents (VOID)
+@@ -392,37 +413,120 @@ EFI_STATUS HandleUsbEvents (VOID)
    return Status;
  }
  
@@ -1000,7 +1218,14 @@ index 05554a6..11d8624 100755
 +FastbootPoll (VOID)
  {
 -  EFI_STATUS Status = EFI_SUCCESS;
-+  EFI_STATUS Status = HandleUsbEvents ();
++  EFI_STATUS Status;
++
++  /* Not while paused: the gadget's buffers are gone. */
++  if (mFastbootUsbStarted && !mGadgetPaused) {
++    FastbootRunDeferredCmd ();
++  }
++
++  Status = HandleUsbEvents ();
 +
 +  if (EFI_ERROR (Status) && (Status != EFI_ABORTED)) {
 +    DEBUG ((EFI_D_ERROR, "Error, failed to handle USB event\n"));
@@ -1033,6 +1258,9 @@ index 05554a6..11d8624 100755
 +    if (!mFastbootUsbStarted) {
 +      return EFI_SUCCESS;
 +    }
++    /* A threaded flash still reads the download buffer. */
++    WaitForFlashFinished ();
++    FastbootDropDeferredCmd ();
 +    Status = Fbd.UsbDeviceProtocol->Stop ();
 +    DEBUG ((EFI_D_ERROR, "Fastboot: gadget paused for USB host: %r\n", Status));
 +    if (EFI_ERROR (Status)) {
@@ -1092,8 +1320,8 @@ index 05554a6..11d8624 100755
 +  Status = FastbootStart ();
 +  if (Status != EFI_SUCCESS) {
 +    return Status;
-+  }
-+
+   }
+ 
 +  FastbootTextMenuLoop ();
 +
 +  return FastbootStop ();
@@ -1108,9 +1336,15 @@ index 05554a6..11d8624 100755
 +    /* A second Stop() would double-free in XBL. */
 +    ExitMenuKeysDetection ();
 +    return EFI_SUCCESS;
-   }
- 
++  }
++
++  /* A threaded flash still reads the download buffer. */
++  WaitForFlashFinished ();
++  FastbootDropDeferredCmd ();
++
    /* Close the fastboot app and stop USB device */
+   Status = FastbootCmdsUnInit ();
+   if (Status != EFI_SUCCESS) {
 diff --git a/QcomModulePkg/Library/FastbootLib/FastbootMain.h b/QcomModulePkg/Library/FastbootLib/FastbootMain.h
 index c528a50..62ccbb5 100755
 --- a/QcomModulePkg/Library/FastbootLib/FastbootMain.h
